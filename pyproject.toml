@@ -1,0 +1,41 @@
+[project]
+name = "rag-demo"
+version = "0.1.0"
+description = "Hybrid-retrieval RAG demo: BM25 + vectors, semantic parent-child chunking, RRF and reranking"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pymilvus>=2.6,<4",
+    "bm25s>=0.2",
+    "jieba>=0.42",
+    "pymupdf>=1.24",
+    "openai>=1.50",
+    "httpx>=0.27",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "pyyaml>=6.0",
+    "python-multipart>=0.0.9",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_demo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = ["integration: requires a live external service (Milvus)"]

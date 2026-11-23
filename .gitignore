@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Local configuration — contains API keys, never commit.
+config.yaml
+.env
+
+# Runtime data: SQLite registry, embedding cache, uploaded files.
+data/
+
+# Test and tooling artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store

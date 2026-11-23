@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG 问答</title>
+  <!-- Inline favicon: avoids a doomed /favicon.ico request in the console. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235b9dff'/%3E%3Cpath d='M9 22V10h6a4 4 0 0 1 0 8h-3l5 4' stroke='%2305101f' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <header class="sidebar-header">
+        <h1>知识库</h1>
+        <button id="health-toggle" class="ghost" title="检查依赖状态">状态</button>
+      </header>
+
+      <section id="health-panel" class="health hidden" aria-live="polite"></section>
+
+      <section class="upload-section">
+        <div id="dropzone" class="dropzone" tabindex="0" role="button"
+             aria-label="上传 PDF 或 Markdown 文档">
+          <p class="dropzone-main">拖入 PDF / Markdown</p>
+          <p class="dropzone-sub">或点击选择文件</p>
+          <input id="file-input" type="file" multiple accept=".pdf,.md,.markdown" hidden>
+        </div>
+        <ul id="upload-list" class="upload-list"></ul>
+      </section>
+
+      <section class="docs-section">
+        <div class="docs-header">
+          <h2>文档</h2>
+          <button id="refresh-docs" class="ghost" title="刷新列表">刷新</button>
+        </div>
+        <ul id="doc-list" class="doc-list"></ul>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div id="messages" class="messages" aria-live="polite">
+        <div class="empty-state">
+          <h2>问点什么</h2>
+          <p>先上传文档，再就文档内容提问。回答会带上来源。</p>
+        </div>
+      </div>
+
+      <form id="composer" class="composer">
+        <textarea id="question" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行"
+                  aria-label="问题"></textarea>
+        <label class="debug-toggle" title="显示检索各阶段结果">
+          <input type="checkbox" id="debug-check"> 调试
+        </label>
+        <button id="send" type="submit">发送</button>
+      </form>
+    </main>
+  </div>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

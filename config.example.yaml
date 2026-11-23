@@ -1,0 +1,122 @@
+# RAG Demo configuration.
+#
+# Copy this file to config.yaml and fill in the two API keys by hand.
+#   cp config.example.yaml config.yaml
+#
+# config.yaml is git-ignored and must never be committed.
+#
+# Every value here can also be supplied through an environment variable.
+# Precedence is: environment variable > config.yaml > built-in default.
+# The variable name is the upper-cased path with dots replaced by double
+# underscores and prefixed with RAG_, for example:
+#   RAG__EMBEDDING__API_KEY=sk-xxx
+#   RAG__LLM__API_KEY=sk-xxx
+
+llm:
+  # OpenAI-compatible relay used for answer generation.
+  base_url: "http://8.134.19.201:20089/v1"
+  # TODO: fill in by hand.
+  api_key: ""
+  model: "claude-sonnet-5"
+  temperature: 0.2
+  max_tokens: 2048
+  timeout_seconds: 120
+  # Turns of conversation retained for query rewriting and answering.
+  history_turns: 6
+
+embedding:
+  # Alibaba Cloud Bailian, OpenAI-compatible mode.
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  # TODO: fill in by hand.
+  api_key: ""
+  # NOTE: this model name has not been verified. Run
+  #   uv run python scripts/selfcheck.py
+  # before the first ingestion. If the name is wrong the self-check says so
+  # explicitly; correct it here and re-run. The vector dimension is probed
+  # from the provider and never hard-coded, so a model change needs no code
+  # change.
+  model: "qwen3.7-text-embedding-flash"
+  # Number of texts submitted per request.
+  batch_size: 10
+  # Retry policy for transient failures.
+  max_retries: 5
+  retry_base_delay_seconds: 1.0
+
+rerank:
+  # Alibaba Cloud Bailian reranking uses the NATIVE DashScope endpoint, not
+  # the OpenAI-compatible one. The compatible-mode path /v1/rerank returns
+  # 404, so it must not be used here.
+  base_url: "https://dashscope.aliyuncs.com"
+  path: "/api/v1/services/rerank/text-rerank/text-rerank"
+  # TODO: fill in by hand (same Bailian key as embedding is fine).
+  api_key: ""
+  # NOTE: not verified; validated by scripts/selfcheck.py at startup.
+  model: "qwen3.7-text-rerank"
+  timeout_seconds: 60
+  max_retries: 3
+
+milvus:
+  uri: "http://127.0.0.1:19530"
+  token: ""
+  # Collections are namespaced so this project never reads or writes the
+  # unrelated rag_demo / rag_chunks collections that already exist.
+  child_collection: "rag_child"
+  parent_collection: "rag_parent"
+  meta_collection: "rag_meta"
+  # Strong consistency is REQUIRED. With the default (Bounded) level, rows
+  # inserted are not visible to a query issued immediately afterwards, which
+  # makes a freshly uploaded document unanswerable for an unpredictable
+  # window. Verified experimentally on milvus v2.6.23.
+  consistency_level: "Strong"
+
+chunking:
+  # Target sizes in characters. Chinese text is roughly one token per
+  # character, so these map closely to tokens.
+  parent_target_chars: 1200
+  parent_max_chars: 2000
+  child_target_chars: 320
+  child_overlap_chars: 60
+  # Semantic fallback is applied only to structural segments that exceed
+  # parent_max_chars.
+  semantic_enabled: true
+  # Cosine distance above which a sentence boundary counts as a topic shift.
+  # Expressed as a percentile of observed distances so it adapts per document.
+  semantic_break_percentile: 88
+  # Sentences are embedded in windows of this many characters for boundary
+  # detection.
+  semantic_window_chars: 180
+
+retrieval:
+  # Candidates retrieved by each channel before fusion.
+  dense_top_k: 40
+  sparse_top_k: 40
+  # RRF rank constant.
+  rrf_k: 60
+  # Candidates pulled from the fused list for reranking.
+  rerank_candidates: 30
+  # Maximum distinct parent contexts supplied to generation.
+  context_count: 6
+  # Minimum contexts to backfill to after duplicate suppression.
+  context_min_count: 3
+  # Total character budget for the assembled context block.
+  context_char_budget: 8000
+  # When an expanded parent exceeds this, an excerpt centred on the matched
+  # child is used instead.
+  parent_excerpt_chars: 1800
+
+parsing:
+  # A PDF whose extractable characters per page fall below this is treated as
+  # image-based and rejected rather than ingested as empty content.
+  min_chars_per_page: 40
+
+storage:
+  # SQLite registry for document lifecycle state.
+  sqlite_path: "data/rag.db"
+  # Cache of embeddings keyed by content hash; makes re-running chunking with
+  # different parameters cheap.
+  embedding_cache_path: "data/embedding_cache"
+  max_upload_mb: 50
+
+api:
+  host: "127.0.0.1"
+  port: 8000
