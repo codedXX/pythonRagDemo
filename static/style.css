@@ -1,424 +1,424 @@
-:root {
-  --bg: #10141b;
-  --panel: #171d26;
-  --panel-2: #1e2632;
-  --line: #2a3442;
-  --text: #e6ebf2;
-  --muted: #8b98a9;
-  --accent: #5b9dff;
-  --accent-dim: #2b4a7a;
-  --ok: #3fbf7f;
-  --warn: #e0a333;
-  --bad: #e0605a;
-  --radius: 10px;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-}
-
-* { box-sizing: border-box; }
-
-html, body {
-  margin: 0;
-  height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-}
-
-.hidden { display: none !important; }
-
-.layout {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  height: 100vh;
-  overflow: hidden;
-}
-
-/* ---------------------------------------------------------------- sidebar */
-
-.sidebar {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.sidebar-header h1 { font-size: 15px; margin: 0; letter-spacing: 0.02em; }
-
-.upload-section, .docs-section { padding: 14px 16px; }
-.docs-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-
-.docs-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.docs-header h2 { font-size: 13px; margin: 0; color: var(--muted); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.06em; }
-
-.dropzone {
-  border: 1.5px dashed var(--line);
-  border-radius: var(--radius);
-  padding: 20px 12px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.dropzone:hover, .dropzone:focus-visible, .dropzone.dragover {
-  border-color: var(--accent);
-  background: rgba(91, 157, 255, 0.06);
-  outline: none;
-}
-
-.dropzone-main { margin: 0 0 4px; font-size: 14px; }
-.dropzone-sub { margin: 0; font-size: 12px; color: var(--muted); }
-
-.upload-list, .doc-list { list-style: none; margin: 10px 0 0; padding: 0; }
-
-.upload-list:empty { margin: 0; }
-
-.upload-item {
-  padding: 8px 10px;
-  background: var(--panel-2);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.upload-item-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.upload-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upload-state { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.upload-item.failed .upload-state { color: var(--bad); }
-.upload-item.done .upload-state { color: var(--ok); }
-
-.progress-track {
-  height: 4px;
-  background: var(--line);
-  border-radius: 2px;
-  margin-top: 7px;
-  overflow: hidden;
-}
-
-.progress-bar {
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width 0.25s ease;
-}
-
-.upload-item.failed .progress-bar { background: var(--bad); }
-.upload-item.done .progress-bar { background: var(--ok); }
-
-.upload-detail {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-  word-break: break-word;
-}
-
-.upload-item.failed .upload-detail { color: var(--bad); }
-
-.doc-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-bottom: 4px;
-  background: var(--panel-2);
-}
-
-.doc-item.failed { border-left: 2px solid var(--bad); }
-.doc-item.active { border-left: 2px solid var(--ok); }
-
-.doc-meta { min-width: 0; }
-.doc-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doc-sub { font-size: 11px; color: var(--muted); }
-.doc-item.failed .doc-sub { color: var(--bad); }
-
-.doc-remove {
-  background: none;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.doc-remove:hover { color: var(--bad); background: rgba(224, 96, 90, 0.12); }
-.doc-remove:disabled { opacity: 0.4; cursor: default; }
-
-/* ----------------------------------------------------------------- health */
-
-.health {
-  margin: 0 16px 0;
-  padding: 10px 12px;
-  background: var(--panel-2);
-  border-radius: var(--radius);
-  font-size: 12px;
-}
-
-.health-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 3px 0;
-}
-
-.health-name { color: var(--muted); }
-.health-ok { color: var(--ok); }
-.health-warn { color: var(--warn); }
-.health-bad { color: var(--bad); }
-.health-msg { color: var(--muted); margin-top: 6px; word-break: break-word; }
-
-/* ------------------------------------------------------------------- main */
-
-.main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 28px max(24px, calc((100% - 820px) / 2));
-}
-
-.empty-state { color: var(--muted); text-align: center; margin-top: 18vh; }
-.empty-state h2 { font-size: 20px; margin: 0 0 8px; color: var(--text); font-weight: 500; }
-.empty-state p { margin: 0; font-size: 14px; }
-
-.turn { margin-bottom: 26px; }
-
-.turn-question {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
-.turn-question span {
-  background: var(--accent-dim);
-  padding: 9px 14px;
-  border-radius: 14px 14px 3px 14px;
-  max-width: 78%;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.turn-answer {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px 14px 14px 3px;
-  padding: 14px 18px;
-  max-width: 92%;
-}
-
-.turn-answer.streaming::after {
-  content: "";
-  display: inline-block;
-  width: 7px;
-  height: 15px;
-  margin-left: 2px;
-  background: var(--accent);
-  vertical-align: text-bottom;
-  animation: blink 1s steps(2) infinite;
-}
-
-@keyframes blink { 50% { opacity: 0; } }
-
-.turn-answer p { margin: 0 0 10px; }
-.turn-answer p:last-child { margin-bottom: 0; }
-.turn-answer h1, .turn-answer h2, .turn-answer h3 { margin: 18px 0 8px; font-size: 16px; }
-.turn-answer ul, .turn-answer ol { margin: 8px 0; padding-left: 22px; }
-.turn-answer li { margin: 3px 0; }
-.turn-answer code {
-  font-family: var(--mono);
-  font-size: 0.88em;
-  background: rgba(255, 255, 255, 0.07);
-  padding: 1.5px 5px;
-  border-radius: 4px;
-}
-.turn-answer pre {
-  background: #0c1017;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px 14px;
-  overflow-x: auto;
-  margin: 10px 0;
-}
-.turn-answer pre code { background: none; padding: 0; font-size: 0.86em; }
-.turn-answer blockquote {
-  margin: 10px 0;
-  padding-left: 12px;
-  border-left: 3px solid var(--accent-dim);
-  color: var(--muted);
-}
-.turn-answer table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 0.94em; }
-.turn-answer th, .turn-answer td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
-.turn-answer th { background: var(--panel-2); }
-.turn-answer a { color: var(--accent); }
-
-.citation {
-  color: var(--accent);
-  font-size: 0.85em;
-  vertical-align: super;
-  padding: 0 1px;
-}
-
-/* ----------------------------------------------------------------- sources */
-
-.sources {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
-.sources-title {
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin-bottom: 8px;
-}
-
-.source-list { list-style: none; margin: 0; padding: 0; }
-
-.source-item {
-  font-size: 12.5px;
-  padding: 7px 10px;
-  background: var(--panel-2);
-  border-radius: 7px;
-  margin-bottom: 6px;
-}
-
-.source-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.source-index { color: var(--accent); font-family: var(--mono); font-size: 11px; }
-.source-name { font-weight: 500; word-break: break-word; }
-.source-where { color: var(--muted); font-size: 11.5px; }
-
-.source-snippet {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.notice {
-  font-size: 12px;
-  color: var(--warn);
-  margin-top: 8px;
-}
-
-.notice.error { color: var(--bad); }
-
-/* --------------------------------------------------------------- debugging */
-
-.debug {
-  margin-top: 12px;
-  font-size: 11.5px;
-  font-family: var(--mono);
-}
-
-.debug summary { cursor: pointer; color: var(--muted); }
-.debug table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-.debug th, .debug td { border: 1px solid var(--line); padding: 3px 6px; text-align: left; }
-.debug th { background: var(--panel-2); color: var(--muted); font-weight: normal; }
-.debug-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
-.debug-stage h4 { margin: 0 0 4px; font-size: 11px; color: var(--muted); font-weight: normal; }
-
-/* ---------------------------------------------------------------- composer */
-
-.composer {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-  padding: 14px max(24px, calc((100% - 820px) / 2)) 20px;
-  border-top: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.composer textarea {
-  flex: 1;
-  resize: none;
-  max-height: 200px;
-  padding: 11px 14px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: var(--text);
-  font: inherit;
-  line-height: 1.5;
-}
-
-.composer textarea:focus { outline: none; border-color: var(--accent); }
-.composer textarea:disabled { opacity: 0.55; }
-
-.composer button[type="submit"] {
-  padding: 11px 20px;
-  background: var(--accent);
-  border: none;
-  border-radius: 10px;
-  color: #05101f;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.composer button[type="submit"]:disabled { opacity: 0.45; cursor: default; }
-
-.debug-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--muted);
-  cursor: pointer;
-  white-space: nowrap;
-  padding-bottom: 11px;
-}
-
-button.ghost {
-  background: none;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 11.5px;
-  cursor: pointer;
-}
-
-button.ghost:hover { color: var(--text); border-color: var(--accent); }
-
-@media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .sidebar { max-height: 40vh; border-right: none; border-bottom: 1px solid var(--line); }
-}
+:root {  /* 定义页面共用的颜色、圆角和字体。 */
+  --bg: #10141b;  /* 定义页面底色。 */
+  --panel: #171d26;  /* 定义面板底色。 */
+  --panel-2: #1e2632;  /* 定义内层面板底色。 */
+  --line: #2a3442;  /* 定义分隔线颜色。 */
+  --text: #e6ebf2;  /* 定义正文颜色。 */
+  --muted: #8b98a9;  /* 定义辅助文字颜色。 */
+  --accent: #5b9dff;  /* 定义强调色。 */
+  --accent-dim: #2b4a7a;  /* 定义暗色强调背景。 */
+  --ok: #3fbf7f;  /* 定义成功状态颜色。 */
+  --warn: #e0a333;  /* 定义警告状态颜色。 */
+  --bad: #e0605a;  /* 定义失败状态颜色。 */
+  --radius: 10px;  /* 定义通用圆角半径。 */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;  /* 定义等宽字体序列。 */
+}  /* 结束该组样式。 */
+
+* { box-sizing: border-box; }  /* 将内边距和边框计入元素尺寸。 */
+
+html, body {  /* 设置整页的基础排版。 */
+  margin: 0;  /* 设置外边距。 */
+  height: 100%;  /* 设置高度。 */
+  background: var(--bg);  /* 设置背景。 */
+  color: var(--text);  /* 设置文字颜色。 */
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",  /* 设置字号、行高及字体。 */
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;  /* 补充适用于中文系统的后备字体。 */
+}  /* 结束该组样式。 */
+
+.hidden { display: none !important; }  /* 隐藏带有此类的元素。 */
+
+.layout {  /* 将侧栏与问答区排列为两列。 */
+  display: grid;  /* 设置布局方式。 */
+  grid-template-columns: 320px 1fr;  /* 设置网格列宽。 */
+  height: 100vh;  /* 设置高度。 */
+  overflow: hidden;  /* 裁去超出容器边界的内容。 */
+}  /* 结束该组样式。 */
+
+/* 知识库侧栏。 */
+
+.sidebar {  /* 布局知识库侧栏。 */
+  background: var(--panel);  /* 设置背景。 */
+  border-right: 1px solid var(--line);  /* 设置右边框。 */
+  display: flex;  /* 设置布局方式。 */
+  flex-direction: column;  /* 沿垂直方向排列子项。 */
+  min-height: 0;  /* 允许容器收缩，使内部滚动区域生效。 */
+  overflow-y: auto;  /* 内容超出可用高度时允许上下滚动。 */
+}  /* 结束该组样式。 */
+
+.sidebar-header {  /* 对齐知识库标题与状态按钮。 */
+  display: flex;  /* 设置布局方式。 */
+  align-items: center;  /* 设置交叉轴对齐方式。 */
+  justify-content: space-between;  /* 将首尾子项分置两端。 */
+  padding: 14px 16px;  /* 设置内边距。 */
+  border-bottom: 1px solid var(--line);  /* 设置底边框。 */
+}  /* 结束该组样式。 */
+
+.sidebar-header h1 { font-size: 15px; margin: 0; letter-spacing: 0.02em; }  /* 调整侧栏标题的字号和字距。 */
+
+.upload-section, .docs-section { padding: 14px 16px; }  /* 为上传区与文档区留出内边距。 */
+.docs-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }  /* 让文档区占用侧栏的剩余高度。 */
+
+.docs-header {  /* 将文档标题与刷新按钮分置两端。 */
+  display: flex;  /* 设置布局方式。 */
+  align-items: center;  /* 设置交叉轴对齐方式。 */
+  justify-content: space-between;  /* 将首尾子项分置两端。 */
+  margin-bottom: 8px;  /* 设置下边距。 */
+}  /* 结束该组样式。 */
+
+.docs-header h2 { font-size: 13px; margin: 0; color: var(--muted); font-weight: 600;  /* 设置文档分区标题的样式。 */
+  text-transform: uppercase; letter-spacing: 0.06em; }  /* 设置大小写显示形式。 */
+
+.dropzone {  /* 定义文件拖放区的外观。 */
+  border: 1.5px dashed var(--line);  /* 设置边框。 */
+  border-radius: var(--radius);  /* 设置圆角半径。 */
+  padding: 20px 12px;  /* 设置内边距。 */
+  text-align: center;  /* 设置文本对齐方式。 */
+  cursor: pointer;  /* 设置鼠标指针。 */
+  transition: border-color 0.15s, background 0.15s;  /* 设置状态切换动画。 */
+}  /* 结束该组样式。 */
+
+.dropzone:hover, .dropzone:focus-visible, .dropzone.dragover {  /* 突出悬停、键盘聚焦或拖入文件时的边界。 */
+  border-color: var(--accent);  /* 设置边框颜色。 */
+  background: rgba(91, 157, 255, 0.06);  /* 设置背景。 */
+  outline: none;  /* 设置轮廓线。 */
+}  /* 结束该组样式。 */
+
+.dropzone-main { margin: 0 0 4px; font-size: 14px; }  /* 设置拖放主提示的字号和下边距。 */
+.dropzone-sub { margin: 0; font-size: 12px; color: var(--muted); }  /* 弱化辅助提示文字。 */
+
+.upload-list, .doc-list { list-style: none; margin: 10px 0 0; padding: 0; }  /* 清除上传与文档列表的默认标记和缩进。 */
+
+.upload-list:empty { margin: 0; }  /* 空上传列表无需占用额外空间。 */
+
+.upload-item {  /* 设置单项上传进度卡片。 */
+  padding: 8px 10px;  /* 设置内边距。 */
+  background: var(--panel-2);  /* 设置背景。 */
+  border-radius: 8px;  /* 设置圆角半径。 */
+  margin-bottom: 8px;  /* 设置下边距。 */
+  font-size: 13px;  /* 设置字号。 */
+}  /* 结束该组样式。 */
+
+.upload-item-head {  /* 对齐上传项中的文件名和状态。 */
+  display: flex;  /* 设置布局方式。 */
+  justify-content: space-between;  /* 将首尾子项分置两端。 */
+  gap: 8px;  /* 设置子项间距。 */
+  align-items: baseline;  /* 设置交叉轴对齐方式。 */
+}  /* 结束该组样式。 */
+
+.upload-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }  /* 过长文件名单行省略。 */
+.upload-state { font-size: 11px; color: var(--muted); white-space: nowrap; }  /* 用小字号显示上传状态。 */
+.upload-item.failed .upload-state { color: var(--bad); }  /* 失败状态使用错误色。 */
+.upload-item.done .upload-state { color: var(--ok); }  /* 完成状态使用成功色。 */
+
+.progress-track {  /* 绘制进度条轨道。 */
+  height: 4px;  /* 设置高度。 */
+  background: var(--line);  /* 设置背景。 */
+  border-radius: 2px;  /* 设置圆角半径。 */
+  margin-top: 7px;  /* 设置上边距。 */
+  overflow: hidden;  /* 裁去超出容器边界的内容。 */
+}  /* 结束该组样式。 */
+
+.progress-bar {  /* 用宽度反映上传进度。 */
+  height: 100%;  /* 设置高度。 */
+  width: 0;  /* 设置宽度。 */
+  background: var(--accent);  /* 设置背景。 */
+  transition: width 0.25s ease;  /* 设置状态切换动画。 */
+}  /* 结束该组样式。 */
+
+.upload-item.failed .progress-bar { background: var(--bad); }  /* 失败时将进度条标红。 */
+.upload-item.done .progress-bar { background: var(--ok); }  /* 完成时将进度条标绿。 */
+
+.upload-detail {  /* 设置上传详情的间距与换行。 */
+  margin: 6px 0 0;  /* 设置外边距。 */
+  font-size: 12px;  /* 设置字号。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+  word-break: break-word;  /* 设置长文本的换行方式。 */
+}  /* 结束该组样式。 */
+
+.upload-item.failed .upload-detail { color: var(--bad); }  /* 突出上传失败的原因。 */
+
+.doc-item {  /* 排列文档摘要和删除按钮。 */
+  display: flex;  /* 设置布局方式。 */
+  align-items: center;  /* 设置交叉轴对齐方式。 */
+  justify-content: space-between;  /* 将首尾子项分置两端。 */
+  gap: 8px;  /* 设置子项间距。 */
+  padding: 8px 10px;  /* 设置内边距。 */
+  border-radius: 8px;  /* 设置圆角半径。 */
+  font-size: 13px;  /* 设置字号。 */
+  margin-bottom: 4px;  /* 设置下边距。 */
+  background: var(--panel-2);  /* 设置背景。 */
+}  /* 结束该组样式。 */
+
+.doc-item.failed { border-left: 2px solid var(--bad); }  /* 用左边线标记失败文档。 */
+.doc-item.active { border-left: 2px solid var(--ok); }  /* 用左边线标记可用文档。 */
+
+.doc-meta { min-width: 0; }  /* 允许摘要缩小以容纳长文件名。 */
+.doc-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }  /* 用省略号截断过长的文档名称。 */
+.doc-sub { font-size: 11px; color: var(--muted); }  /* 弱化文档统计文字。 */
+.doc-item.failed .doc-sub { color: var(--bad); }  /* 突出显示文档的失败详情。 */
+
+.doc-remove {  /* 设置删除按钮外观。 */
+  background: none;  /* 设置背景。 */
+  border: none;  /* 设置边框。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+  cursor: pointer;  /* 设置鼠标指针。 */
+  font-size: 16px;  /* 设置字号。 */
+  line-height: 1;  /* 设置行高。 */
+  padding: 2px 6px;  /* 设置内边距。 */
+  border-radius: 4px;  /* 设置圆角半径。 */
+}  /* 结束该组样式。 */
+
+.doc-remove:hover { color: var(--bad); background: rgba(224, 96, 90, 0.12); }  /* 悬停时提示删除操作。 */
+.doc-remove:disabled { opacity: 0.4; cursor: default; }  /* 淡化暂不可用的删除按钮。 */
+
+/* 依赖状态。 */
+
+.health {  /* 设置依赖状态面板。 */
+  margin: 0 16px 0;  /* 设置外边距。 */
+  padding: 10px 12px;  /* 设置内边距。 */
+  background: var(--panel-2);  /* 设置背景。 */
+  border-radius: var(--radius);  /* 设置圆角半径。 */
+  font-size: 12px;  /* 设置字号。 */
+}  /* 结束该组样式。 */
+
+.health-row {  /* 将依赖名称与状态分置两端。 */
+  display: flex;  /* 设置布局方式。 */
+  justify-content: space-between;  /* 将首尾子项分置两端。 */
+  gap: 8px;  /* 设置子项间距。 */
+  padding: 3px 0;  /* 设置内边距。 */
+}  /* 结束该组样式。 */
+
+.health-name { color: var(--muted); }  /* 弱化依赖名称。 */
+.health-ok { color: var(--ok); }  /* 正常状态使用成功色。 */
+.health-warn { color: var(--warn); }  /* 配置警告使用警告色。 */
+.health-bad { color: var(--bad); }  /* 依赖异常使用错误色。 */
+.health-msg { color: var(--muted); margin-top: 6px; word-break: break-word; }  /* 让故障说明可以换行。 */
+
+/* 问答区。 */
+
+.main {  /* 垂直排列问答区和输入栏。 */
+  display: flex;  /* 设置布局方式。 */
+  flex-direction: column;  /* 沿垂直方向排列子项。 */
+  min-width: 0;  /* 设置最小宽度。 */
+  min-height: 0;  /* 允许容器收缩，使内部滚动区域生效。 */
+}  /* 结束该组样式。 */
+
+.messages {  /* 设置消息区宽度与滚动方式。 */
+  flex: 1;  /* 设置剩余空间分配比例。 */
+  overflow-y: auto;  /* 内容超出可用高度时允许上下滚动。 */
+  padding: 28px max(24px, calc((100% - 820px) / 2));  /* 设置内边距。 */
+}  /* 结束该组样式。 */
+
+.empty-state { color: var(--muted); text-align: center; margin-top: 18vh; }  /* 在消息区中央显示空状态提示。 */
+.empty-state h2 { font-size: 20px; margin: 0 0 8px; color: var(--text); font-weight: 500; }  /* 突出空状态标题。 */
+.empty-state p { margin: 0; font-size: 14px; }  /* 设置空状态说明字号。 */
+
+.turn { margin-bottom: 26px; }  /* 在相邻对话轮次间留白。 */
+
+.turn-question {  /* 将用户提问推向右侧。 */
+  display: flex;  /* 设置布局方式。 */
+  justify-content: flex-end;  /* 设置主轴对齐方式。 */
+  margin-bottom: 12px;  /* 设置下边距。 */
+}  /* 结束该组样式。 */
+
+.turn-question span {  /* 设置问题气泡的颜色、宽度和换行。 */
+  background: var(--accent-dim);  /* 设置背景。 */
+  padding: 9px 14px;  /* 设置内边距。 */
+  border-radius: 14px 14px 3px 14px;  /* 设置圆角半径。 */
+  max-width: 78%;  /* 设置最大宽度。 */
+  white-space: pre-wrap;  /* 设置空白和换行保留方式。 */
+  word-break: break-word;  /* 设置长文本的换行方式。 */
+}  /* 结束该组样式。 */
+
+.turn-answer {  /* 设置回答气泡的边框和内边距。 */
+  background: var(--panel);  /* 设置背景。 */
+  border: 1px solid var(--line);  /* 设置边框。 */
+  border-radius: 14px 14px 14px 3px;  /* 设置圆角半径。 */
+  padding: 14px 18px;  /* 设置内边距。 */
+  max-width: 92%;  /* 设置最大宽度。 */
+}  /* 结束该组样式。 */
+
+.turn-answer.streaming::after {  /* 在生成中的回答后绘制光标。 */
+  content: "";  /* 设置伪元素的内容。 */
+  display: inline-block;  /* 设置布局方式。 */
+  width: 7px;  /* 设置宽度。 */
+  height: 15px;  /* 设置高度。 */
+  margin-left: 2px;  /* 设置左边距。 */
+  background: var(--accent);  /* 设置背景。 */
+  vertical-align: text-bottom;  /* 设置垂直对齐方式。 */
+  animation: blink 1s steps(2) infinite;  /* 设置动画。 */
+}  /* 结束该组样式。 */
+
+@keyframes blink { 50% { opacity: 0; } }  /* 在动画中段隐藏光标，实现闪烁。 */
+
+.turn-answer p { margin: 0 0 10px; }  /* 设置回答段落间距。 */
+.turn-answer p:last-child { margin-bottom: 0; }  /* 取消最后一段的下边距。 */
+.turn-answer h1, .turn-answer h2, .turn-answer h3 { margin: 18px 0 8px; font-size: 16px; }  /* 统一回答中各级标题的间距和字号。 */
+.turn-answer ul, .turn-answer ol { margin: 8px 0; padding-left: 22px; }  /* 设置有序与无序列表的缩进。 */
+.turn-answer li { margin: 3px 0; }  /* 给列表项留出垂直间距。 */
+.turn-answer code {  /* 用等宽字体展示行内代码。 */
+  font-family: var(--mono);  /* 设置字体序列。 */
+  font-size: 0.88em;  /* 设置字号。 */
+  background: rgba(255, 255, 255, 0.07);  /* 设置背景。 */
+  padding: 1.5px 5px;  /* 设置内边距。 */
+  border-radius: 4px;  /* 设置圆角半径。 */
+}  /* 结束该组样式。 */
+.turn-answer pre {  /* 为独立代码块设置底色和水平滚动。 */
+  background: #0c1017;  /* 设置背景。 */
+  border: 1px solid var(--line);  /* 设置边框。 */
+  border-radius: 8px;  /* 设置圆角半径。 */
+  padding: 12px 14px;  /* 设置内边距。 */
+  overflow-x: auto;  /* 设置横向滚动方式。 */
+  margin: 10px 0;  /* 设置外边距。 */
+}  /* 结束该组样式。 */
+.turn-answer pre code { background: none; padding: 0; font-size: 0.86em; }  /* 去除代码块内重复的行内样式。 */
+.turn-answer blockquote {  /* 用左边框标记引用段落。 */
+  margin: 10px 0;  /* 设置外边距。 */
+  padding-left: 12px;  /* 设置左内边距。 */
+  border-left: 3px solid var(--accent-dim);  /* 设置左边框。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+}  /* 结束该组样式。 */
+.turn-answer table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 0.94em; }  /* 让回答表格铺满可用宽度并合并边框。 */
+.turn-answer th, .turn-answer td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }  /* 设置表头和单元格边框、间距与对齐。 */
+.turn-answer th { background: var(--panel-2); }  /* 为表头使用不同底色。 */
+.turn-answer a { color: var(--accent); }  /* 用强调色显示可点击链接。 */
+
+.citation {  /* 将引用编号渲染为上标。 */
+  color: var(--accent);  /* 设置文字颜色。 */
+  font-size: 0.85em;  /* 设置字号。 */
+  vertical-align: super;  /* 设置垂直对齐方式。 */
+  padding: 0 1px;  /* 设置内边距。 */
+}  /* 结束该组样式。 */
+
+/* 引用来源。 */
+
+.sources {  /* 用分隔线隔开回答和来源。 */
+  margin-top: 14px;  /* 设置上边距。 */
+  padding-top: 12px;  /* 设置上内边距。 */
+  border-top: 1px solid var(--line);  /* 设置上边框。 */
+}  /* 结束该组样式。 */
+
+.sources-title {  /* 设置来源区标题。 */
+  font-size: 11px;  /* 设置字号。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+  text-transform: uppercase;  /* 设置大小写显示形式。 */
+  letter-spacing: 0.07em;  /* 设置字距。 */
+  margin-bottom: 8px;  /* 设置下边距。 */
+}  /* 结束该组样式。 */
+
+.source-list { list-style: none; margin: 0; padding: 0; }  /* 清除来源列表的默认缩进和标记。 */
+
+.source-item {  /* 设置单条来源的卡片外观。 */
+  font-size: 12.5px;  /* 设置字号。 */
+  padding: 7px 10px;  /* 设置内边距。 */
+  background: var(--panel-2);  /* 设置背景。 */
+  border-radius: 7px;  /* 设置圆角半径。 */
+  margin-bottom: 6px;  /* 设置下边距。 */
+}  /* 结束该组样式。 */
+
+.source-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }  /* 让来源标题行可换行并保持基线对齐。 */
+.source-index { color: var(--accent); font-family: var(--mono); font-size: 11px; }  /* 用等宽字体突出引用序号。 */
+.source-name { font-weight: 500; word-break: break-word; }  /* 突出文件名称并允许长名称换行。 */
+.source-where { color: var(--muted); font-size: 11.5px; }  /* 弱化页码等位置说明。 */
+
+.source-snippet {  /* 将来源预览限制在两行。 */
+  margin: 6px 0 0;  /* 设置外边距。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+  font-size: 12px;  /* 设置字号。 */
+  line-height: 1.5;  /* 设置行高。 */
+  display: -webkit-box;  /* 设置布局方式。 */
+  -webkit-line-clamp: 2;  /* 设置可见行数上限。 */
+  -webkit-box-orient: vertical;  /* 设置文本盒的排列方向。 */
+  overflow: hidden;  /* 裁去超出容器边界的内容。 */
+}  /* 结束该组样式。 */
+
+.notice {  /* 用警告色显示处理提示。 */
+  font-size: 12px;  /* 设置字号。 */
+  color: var(--warn);  /* 设置文字颜色。 */
+  margin-top: 8px;  /* 设置上边距。 */
+}  /* 结束该组样式。 */
+
+.notice.error { color: var(--bad); }  /* 错误提示使用错误色。 */
+
+/* 检索调试。 */
+
+.debug {  /* 设置调试面板的间距和字体。 */
+  margin-top: 12px;  /* 设置上边距。 */
+  font-size: 11.5px;  /* 设置字号。 */
+  font-family: var(--mono);  /* 设置字体序列。 */
+}  /* 结束该组样式。 */
+
+.debug summary { cursor: pointer; color: var(--muted); }  /* 提示折叠标题可点击。 */
+.debug table { width: 100%; border-collapse: collapse; margin-top: 8px; }  /* 统一候选表的宽度和边框规则。 */
+.debug th, .debug td { border: 1px solid var(--line); padding: 3px 6px; text-align: left; }  /* 对齐调试表格中的候选数据。 */
+.debug th { background: var(--panel-2); color: var(--muted); font-weight: normal; }  /* 弱化调试表头并添加底色。 */
+.debug-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }  /* 将各检索阶段排列成两列。 */
+.debug-stage h4 { margin: 0 0 4px; font-size: 11px; color: var(--muted); font-weight: normal; }  /* 设置检索阶段的小标题。 */
+
+/* 提问表单。 */
+
+.composer {  /* 排列输入框、调试开关和发送按钮。 */
+  display: flex;  /* 设置布局方式。 */
+  gap: 10px;  /* 设置子项间距。 */
+  align-items: flex-end;  /* 设置交叉轴对齐方式。 */
+  padding: 14px max(24px, calc((100% - 820px) / 2)) 20px;  /* 设置内边距。 */
+  border-top: 1px solid var(--line);  /* 设置上边框。 */
+  background: var(--panel);  /* 设置背景。 */
+}  /* 结束该组样式。 */
+
+.composer textarea {  /* 设置输入框的尺寸及配色。 */
+  flex: 1;  /* 设置剩余空间分配比例。 */
+  resize: none;  /* 设置用户调整尺寸的方式。 */
+  max-height: 200px;  /* 设置最大高度。 */
+  padding: 11px 14px;  /* 设置内边距。 */
+  background: var(--panel-2);  /* 设置背景。 */
+  border: 1px solid var(--line);  /* 设置边框。 */
+  border-radius: 10px;  /* 设置圆角半径。 */
+  color: var(--text);  /* 设置文字颜色。 */
+  font: inherit;  /* 设置字号、行高及字体。 */
+  line-height: 1.5;  /* 设置行高。 */
+}  /* 结束该组样式。 */
+
+.composer textarea:focus { outline: none; border-color: var(--accent); }  /* 聚焦时突出输入框边框。 */
+.composer textarea:disabled { opacity: 0.55; }  /* 淡化禁用中的输入框。 */
+
+.composer button[type="submit"] {  /* 设置发送按钮的外观。 */
+  padding: 11px 20px;  /* 设置内边距。 */
+  background: var(--accent);  /* 设置背景。 */
+  border: none;  /* 设置边框。 */
+  border-radius: 10px;  /* 设置圆角半径。 */
+  color: #05101f;  /* 设置文字颜色。 */
+  font-weight: 600;  /* 设置字重。 */
+  font-size: 14px;  /* 设置字号。 */
+  cursor: pointer;  /* 设置鼠标指针。 */
+}  /* 结束该组样式。 */
+
+.composer button[type="submit"]:disabled { opacity: 0.45; cursor: default; }  /* 淡化禁用的发送按钮。 */
+
+.debug-toggle {  /* 对齐调试复选框和文字。 */
+  display: flex;  /* 设置布局方式。 */
+  align-items: center;  /* 设置交叉轴对齐方式。 */
+  gap: 5px;  /* 设置子项间距。 */
+  font-size: 12px;  /* 设置字号。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+  cursor: pointer;  /* 设置鼠标指针。 */
+  white-space: nowrap;  /* 设置空白和换行保留方式。 */
+  padding-bottom: 11px;  /* 设置下内边距。 */
+}  /* 结束该组样式。 */
+
+button.ghost {  /* 设置次要操作按钮的边框和配色。 */
+  background: none;  /* 设置背景。 */
+  border: 1px solid var(--line);  /* 设置边框。 */
+  color: var(--muted);  /* 设置文字颜色。 */
+  border-radius: 6px;  /* 设置圆角半径。 */
+  padding: 3px 9px;  /* 设置内边距。 */
+  font-size: 11.5px;  /* 设置字号。 */
+  cursor: pointer;  /* 设置鼠标指针。 */
+}  /* 结束该组样式。 */
+
+button.ghost:hover { color: var(--text); border-color: var(--accent); }  /* 悬停时突出次要按钮。 */
+
+@media (max-width: 860px) {  /* 在窄屏切换为上下布局。 */
+  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }  /* 将侧栏移到消息区上方。 */
+  .sidebar { max-height: 40vh; border-right: none; border-bottom: 1px solid var(--line); }  /* 限制窄屏侧栏高度并改用下边线。 */
+}  /* 结束窄屏适配规则。 */

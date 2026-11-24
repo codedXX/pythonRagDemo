@@ -1,61 +1,63 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RAG 问答</title>
-  <!-- Inline favicon: avoids a doomed /favicon.ico request in the console. -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235b9dff'/%3E%3Cpath d='M9 22V10h6a4 4 0 0 1 0 8h-3l5 4' stroke='%2305101f' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-  <div class="layout">
-    <aside class="sidebar">
-      <header class="sidebar-header">
-        <h1>知识库</h1>
-        <button id="health-toggle" class="ghost" title="检查依赖状态">状态</button>
-      </header>
+<!DOCTYPE html><!-- 声明当前页面使用标准文档模式。 -->
+<html lang="zh-CN"><!-- 指定页面的主要语言为简体中文。 -->
+<head><!-- 开始定义页面元信息。 -->
+  <meta charset="utf-8"><!-- 指定用统一字符编码解码中文。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- 让布局按设备宽度显示，初始缩放比例为一。 -->
+  <title>RAG 问答</title><!-- 设置浏览器标签页的标题。 -->
+  <!-- 将站点图标直接嵌入页面，避免额外请求图标文件。 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%235b9dff'/%3E%3Cpath d='M9 22V10h6a4 4 0 0 1 0 8h-3l5 4' stroke='%2305101f' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"><!-- 加载内嵌图标。 -->
+  <link rel="stylesheet" href="/static/style.css"><!-- 加载问答页面的样式表。 -->
+</head><!-- 结束页面元信息。 -->
+<body><!-- 开始页面可见内容。 -->
+  <div class="layout"><!-- 建立侧栏与对话区共用的布局容器。 -->
+    <aside class="sidebar"><!-- 开始知识库侧栏。 -->
+      <header class="sidebar-header"><!-- 组织侧栏标题和状态按钮。 -->
+        <h1>知识库</h1><!-- 显示知识库标题。 -->
+        <button id="health-toggle" class="ghost" title="检查依赖状态">状态</button><!-- 提供检查依赖状态的入口。 -->
+      </header><!-- 结束侧栏页头。 -->
 
-      <section id="health-panel" class="health hidden" aria-live="polite"></section>
+      <section id="health-panel" class="health hidden" aria-live="polite"></section><!-- 预留依赖状态面板，初始隐藏并允许辅助技术播报更新。 -->
 
-      <section class="upload-section">
+      <section class="upload-section"><!-- 开始文件上传区。 -->
+        <!-- 让拖放区可通过键盘聚焦，并具备按钮语义。 -->
         <div id="dropzone" class="dropzone" tabindex="0" role="button"
-             aria-label="上传 PDF 或 Markdown 文档">
-          <p class="dropzone-main">拖入 PDF / Markdown</p>
-          <p class="dropzone-sub">或点击选择文件</p>
-          <input id="file-input" type="file" multiple accept=".pdf,.md,.markdown" hidden>
-        </div>
-        <ul id="upload-list" class="upload-list"></ul>
-      </section>
+             aria-label="上传 PDF 或 Markdown 文档"><!-- 用无障碍标签说明支持上传的文件格式。 -->
+          <p class="dropzone-main">拖入 PDF / Markdown</p><!-- 说明可拖入的文件格式。 -->
+          <p class="dropzone-sub">或点击选择文件</p><!-- 提示也可以点击选取文件。 -->
+          <input id="file-input" type="file" multiple accept=".pdf,.md,.markdown" hidden><!-- 允许同时选择多个受支持的文档，由拖放区触发隐藏的选择器。 -->
+        </div><!-- 结束文件选择区域。 -->
+        <ul id="upload-list" class="upload-list"></ul><!-- 预留各文件的上传状态和进度列表。 -->
+      </section><!-- 结束上传区。 -->
 
-      <section class="docs-section">
-        <div class="docs-header">
-          <h2>文档</h2>
-          <button id="refresh-docs" class="ghost" title="刷新列表">刷新</button>
-        </div>
-        <ul id="doc-list" class="doc-list"></ul>
-      </section>
-    </aside>
+      <section class="docs-section"><!-- 开始显示知识库中的文档。 -->
+        <div class="docs-header"><!-- 组织文档列表的标题和操作。 -->
+          <h2>文档</h2><!-- 显示文档区标题。 -->
+          <button id="refresh-docs" class="ghost" title="刷新列表">刷新</button><!-- 点击后重新加载文档列表。 -->
+        </div><!-- 结束列表工具栏。 -->
+        <ul id="doc-list" class="doc-list"></ul><!-- 预留已登记文档的列表。 -->
+      </section><!-- 结束文档区。 -->
+    </aside><!-- 结束知识库侧栏。 -->
 
-    <main class="main">
-      <div id="messages" class="messages" aria-live="polite">
-        <div class="empty-state">
-          <h2>问点什么</h2>
-          <p>先上传文档，再就文档内容提问。回答会带上来源。</p>
-        </div>
-      </div>
+    <main class="main"><!-- 开始页面的问答主区域。 -->
+      <div id="messages" class="messages" aria-live="polite"><!-- 容纳问答消息，并允许辅助技术播报更新。 -->
+        <div class="empty-state"><!-- 尚无对话时显示入门提示。 -->
+          <h2>问点什么</h2><!-- 显示首次提问提示。 -->
+          <p>先上传文档，再就文档内容提问。回答会带上来源。</p><!-- 说明先上传文档再提问的操作顺序。 -->
+        </div><!-- 结束空对话提示。 -->
+      </div><!-- 结束消息容器。 -->
 
-      <form id="composer" class="composer">
+      <form id="composer" class="composer"><!-- 建立提问表单。 -->
+        <!-- 提供单行起始的输入框，并说明发送与换行快捷键。 -->
         <textarea id="question" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行"
-                  aria-label="问题"></textarea>
-        <label class="debug-toggle" title="显示检索各阶段结果">
-          <input type="checkbox" id="debug-check"> 调试
-        </label>
-        <button id="send" type="submit">发送</button>
-      </form>
-    </main>
-  </div>
+                  aria-label="问题"></textarea><!-- 为问题输入框提供无障碍名称。 -->
+        <label class="debug-toggle" title="显示检索各阶段结果"><!-- 将调试开关和文字标签关联。 -->
+          <input type="checkbox" id="debug-check"> 调试<!-- 允许用户选择是否展示检索细节。 -->
+        </label><!-- 结束调试开关标签。 -->
+        <button id="send" type="submit">发送</button><!-- 提交当前问题。 -->
+      </form><!-- 结束提问表单。 -->
+    </main><!-- 结束问答主区域。 -->
+  </div><!-- 结束整体布局。 -->
 
-  <script type="module" src="/static/app.js"></script>
-</body>
-</html>
+  <script type="module" src="/static/app.js"></script><!-- 以模块方式加载问答交互脚本。 -->
+</body><!-- 结束页面可见内容。 -->
+</html><!-- 结束页面文档。 -->

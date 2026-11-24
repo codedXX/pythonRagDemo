@@ -1,122 +1,67 @@
-# RAG Demo configuration.
-#
-# Copy this file to config.yaml and fill in the two API keys by hand.
-#   cp config.example.yaml config.yaml
-#
-# config.yaml is git-ignored and must never be committed.
-#
-# Every value here can also be supplied through an environment variable.
-# Precedence is: environment variable > config.yaml > built-in default.
-# The variable name is the upper-cased path with dots replaced by double
-# underscores and prefixed with RAG_, for example:
-#   RAG__EMBEDDING__API_KEY=sk-xxx
-#   RAG__LLM__API_KEY=sk-xxx
+# 复制本文件为 config.yaml，并填写所用服务的密钥。本地配置文件已由版本管理忽略。
+# 环境变量优先于本地配置，本地配置优先于内置默认值。
+# 环境变量使用大写字段路径，各层用双下划线分隔，例如 RAG__EMBEDDING__API_KEY 和 RAG__LLM__API_KEY。
 
-llm:
-  # OpenAI-compatible relay used for answer generation.
-  base_url: "http://8.134.19.201:20089/v1"
-  # TODO: fill in by hand.
-  api_key: ""
-  model: "claude-sonnet-5"
-  temperature: 0.2
-  max_tokens: 2048
-  timeout_seconds: 120
-  # Turns of conversation retained for query rewriting and answering.
-  history_turns: 6
+llm:  # 回答生成与对话历史设置。
+  base_url: "http://8.134.19.201:20089/v1"  # 回答生成使用的兼容接口根地址。
+  api_key: ""  # 在本地配置或环境变量中填写生成服务密钥。
+  model: "claude-sonnet-5"  # 设置模型。
+  temperature: 0.2  # 设置采样温度。
+  max_tokens: 2048  # 设置最大生成词元数。
+  timeout_seconds: 120  # 设置超时秒数。
+  history_turns: 6  # 追问改写和生成回答时最多保留的历史轮数。
 
-embedding:
-  # Alibaba Cloud Bailian, OpenAI-compatible mode.
-  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  # TODO: fill in by hand.
-  api_key: ""
-  # NOTE: this model name has not been verified. Run
-  #   uv run python scripts/selfcheck.py
-  # before the first ingestion. If the name is wrong the self-check says so
-  # explicitly; correct it here and re-run. The vector dimension is probed
-  # from the provider and never hard-coded, so a model change needs no code
-  # change.
-  model: "qwen3.7-text-embedding-flash"
-  # Number of texts submitted per request.
-  batch_size: 10
-  # Retry policy for transient failures.
-  max_retries: 5
-  retry_base_delay_seconds: 1.0
+embedding:  # 文本向量生成设置。
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 使用百炼的向量生成兼容接口。
+  api_key: ""  # 填写百炼向量服务密钥。
+  model: "qwen3.7-text-embedding-flash"  # 首次入库前运行 uv run python scripts/selfcheck.py 核实模型名及向量维度。
+  batch_size: 10  # 设置单批文本数。
+  max_retries: 5  # 设置临时故障时允许的总尝试次数。
+  retry_base_delay_seconds: 1.0  # 设置初始退避秒数。
 
-rerank:
-  # Alibaba Cloud Bailian reranking uses the NATIVE DashScope endpoint, not
-  # the OpenAI-compatible one. The compatible-mode path /v1/rerank returns
-  # 404, so it must not be used here.
-  base_url: "https://dashscope.aliyuncs.com"
-  path: "/api/v1/services/rerank/text-rerank/text-rerank"
-  # TODO: fill in by hand (same Bailian key as embedding is fine).
-  api_key: ""
-  # NOTE: not verified; validated by scripts/selfcheck.py at startup.
-  model: "qwen3.7-text-rerank"
-  timeout_seconds: 60
-  max_retries: 3
+rerank:  # 候选文档重排设置。
+  base_url: "https://dashscope.aliyuncs.com"  # 使用百炼原生服务根地址。
+  path: "/api/v1/services/rerank/text-rerank/text-rerank"  # 重排模型使用此原生路径；兼容模式的重排路径会返回未找到。
+  api_key: ""  # 可与向量生成服务共用百炼密钥。
+  model: "qwen3.7-text-rerank"  # 所选模型由启动自检验证。
+  timeout_seconds: 60  # 设置超时秒数。
+  max_retries: 3  # 设置最大尝试次数。
 
-milvus:
-  uri: "http://127.0.0.1:19530"
-  token: ""
-  # Collections are namespaced so this project never reads or writes the
-  # unrelated rag_demo / rag_chunks collections that already exist.
-  child_collection: "rag_child"
-  parent_collection: "rag_parent"
-  meta_collection: "rag_meta"
-  # Strong consistency is REQUIRED. With the default (Bounded) level, rows
-  # inserted are not visible to a query issued immediately afterwards, which
-  # makes a freshly uploaded document unanswerable for an unpredictable
-  # window. Verified experimentally on milvus v2.6.23.
-  consistency_level: "Strong"
+milvus:  # 向量数据库设置。
+  uri: "http://127.0.0.1:19530"  # 设置连接地址。
+  token: ""  # 访问数据库的令牌，本地免认证服务可留空。
+  child_collection: "rag_child"  # 本项目单独存放可检索的子块，避免与其他项目的集合混用。
+  parent_collection: "rag_parent"  # 设置父块集合名。
+  meta_collection: "rag_meta"  # 设置元数据集合名。
+  consistency_level: "Strong"  # 强一致性确保上传完成后可立即查询；有界一致性下新数据可能延迟可见。
 
-chunking:
-  # Target sizes in characters. Chinese text is roughly one token per
-  # character, so these map closely to tokens.
-  parent_target_chars: 1200
-  parent_max_chars: 2000
-  child_target_chars: 320
-  child_overlap_chars: 60
-  # Semantic fallback is applied only to structural segments that exceed
-  # parent_max_chars.
-  semantic_enabled: true
-  # Cosine distance above which a sentence boundary counts as a topic shift.
-  # Expressed as a percentile of observed distances so it adapts per document.
-  semantic_break_percentile: 88
-  # Sentences are embedded in windows of this many characters for boundary
-  # detection.
-  semantic_window_chars: 180
+chunking:  # 父子分块设置。
+  parent_target_chars: 1200  # 设置父块目标字符数。
+  parent_max_chars: 2000  # 设置父块字符上限。
+  child_target_chars: 320  # 设置子块目标字符数。
+  child_overlap_chars: 60  # 设置相邻子块重叠字符数。
+  semantic_enabled: true  # 只在结构切分仍不理想的超长片段中尝试语义切分。
+  semantic_break_percentile: 88  # 按文档中相邻句子的余弦距离分布选择话题边界阈值。
+  semantic_window_chars: 180  # 设置语义窗口字符数。
 
-retrieval:
-  # Candidates retrieved by each channel before fusion.
-  dense_top_k: 40
-  sparse_top_k: 40
-  # RRF rank constant.
-  rrf_k: 60
-  # Candidates pulled from the fused list for reranking.
-  rerank_candidates: 30
-  # Maximum distinct parent contexts supplied to generation.
-  context_count: 6
-  # Minimum contexts to backfill to after duplicate suppression.
-  context_min_count: 3
-  # Total character budget for the assembled context block.
-  context_char_budget: 8000
-  # When an expanded parent exceeds this, an excerpt centred on the matched
-  # child is used instead.
-  parent_excerpt_chars: 1800
+retrieval:  # 混合检索设置。
+  dense_top_k: 40  # 设置向量召回条数。
+  sparse_top_k: 40  # 设置关键词召回条数。
+  rrf_k: 60  # 设置倒数排名融合常数。
+  rerank_candidates: 30  # 设置重排候选数量。
+  context_count: 6  # 设置上下文数量。
+  context_min_count: 3  # 去除相同父块后，配置希望补足的最少上下文数。
+  context_char_budget: 8000  # 设置上下文总字符预算。
+  parent_excerpt_chars: 1800  # 父块过长时，以命中的子块为中心截取附近正文。
 
-parsing:
-  # A PDF whose extractable characters per page fall below this is treated as
-  # image-based and rejected rather than ingested as empty content.
-  min_chars_per_page: 40
+parsing:  # 文档解析设置。
+  min_chars_per_page: 40  # 低于该平均字符密度的文档按扫描件处理。
 
-storage:
-  # SQLite registry for document lifecycle state.
-  sqlite_path: "data/rag.db"
-  # Cache of embeddings keyed by content hash; makes re-running chunking with
-  # different parameters cheap.
-  embedding_cache_path: "data/embedding_cache"
-  max_upload_mb: 50
+storage:  # 本地持久化设置。
+  sqlite_path: "data/rag.db"  # 设置登记数据库路径。
+  embedding_cache_path: "data/embedding_cache"  # 按文本和模型生成缓存键，重复切块时可复用相同文本的向量。
+  max_upload_mb: 50  # 设置单文件上传上限（兆字节）。
 
-api:
-  host: "127.0.0.1"
-  port: 8000
+api:  # 应用监听设置。
+  host: "127.0.0.1"  # 设置监听地址。
+  port: 8000  # 设置监听端口。

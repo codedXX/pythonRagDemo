@@ -1,70 +1,56 @@
 #!/usr/bin/env python
-"""Verify external dependencies before using the system.
+"""入库前运行 uv run python scripts/selfcheck.py，核对外部服务。
 
-Run this first, before ingesting anything:
+实测向量模型的维度，避免用错误维度建库；用已知相关的段落检验重排顺序，并验证生成模型的凭据及流式响应。全部通过时退出码为 0，存在异常时为 1。"""
 
-    uv run python scripts/selfcheck.py
+from __future__ import annotations  # 延后解析类型注解，允许引用尚未定义的类型。
 
-It answers three questions that cannot be settled by reading configuration:
+import sys  # 引入系统参数工具。
+from pathlib import Path  # 从 pathlib 导入路径对象。
 
-* Does the embedding model exist, and how many dimensions does it return?
-  The dimension is fixed when a collection is created, so guessing wrong means
-  rebuilding the knowledge base.
-* Does the reranking model exist, and does it rank a case with an obvious answer
-  sensibly?
-* Does the generation model exist, are the credentials accepted, and does it
-  actually stream?
+# 将源码目录加入搜索路径，方便直接运行脚本。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))  # 将源码路径置于导入搜索路径首位。
 
-Exit code is 0 when every dependency is healthy and 1 otherwise, so this can gate
-a deployment.
-"""
-
-from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-# Allow running as a plain script without installing the package.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-
+# 从 rag_demo.config 引入本模块使用的类型和工具。
 from rag_demo.config import ConfigurationError, load_settings  # noqa: E402
+# 从 rag_demo.selfcheck 引入本模块使用的类型和工具。
 from rag_demo.selfcheck import format_report, run_selfcheck, write_meta  # noqa: E402
 
 
-def main(argv: list[str]) -> int:
-    root = Path.cwd()
-    skip_llm = "--skip-llm" in argv
+def main(argv: list[str]) -> int:  # 执行命令行自检，并返回可用于部署判断的退出码。
+    root = Path.cwd()  # 从启动目录定位项目。
+    skip_llm = "--skip-llm" in argv  # 读取命令行开关，决定本次是否检查生成模型。
 
-    try:
-        settings = load_settings(root=root)
-    except ConfigurationError as exc:
-        print(f"configuration error: {exc}", file=sys.stderr)
-        return 1
+    try:  # 在此捕获后续操作可能产生的异常。
+        settings = load_settings(root=root)  # 将配置设为加载配置的结果。
+    except ConfigurationError as exc:  # 捕获配置校验异常。
+        print(f"configuration error: {exc}", file=sys.stderr)  # 将配置校验错误写入标准错误流。
+        return 1  # 配置无效时以失败状态结束。
 
-    config_path = root / "config.yaml"
-    if not config_path.exists():
-        print(
-            f"note: {config_path} does not exist; using defaults and environment "
-            "variables only. Copy config.example.yaml to config.yaml and fill in "
-            "the API keys.",
-            file=sys.stderr,
-        )
+    config_path = root / "config.yaml"  # 构造自检所用配置文件的默认路径。
+    if not config_path.exists():  # 当不满足“文件存在的结果”时进入此分支。
+        print(  # 向终端输出提示信息。
+            f"note: {config_path} does not exist; using defaults and environment "  # 说明本次没有读取本地配置文件。
+            "variables only. Copy config.example.yaml to config.yaml and fill in "  # 提示从示例文件复制本地配置。
+            "the API keys.",  # 提醒填写访问模型所需的密钥。
+            file=sys.stderr,  # 将配置提示写入标准错误流。
+        )  # 结束当前多行表达式。
 
-    print(f"checking dependencies (config: {config_path})")
-    print()
-    report = run_selfcheck(settings, include_llm=not skip_llm)
-    print(format_report(report))
+    print(f"checking dependencies (config: {config_path})")  # 显示即将检查的配置文件位置。
+    print()  # 在终端输出空行以隔开检查标题和结果。
+    report = run_selfcheck(settings, include_llm=not skip_llm)  # 按命令行选项决定是否连同生成模型一起探测。
+    print(format_report(report))  # 将各项检查状态以可读形式输出。
 
-    # Record the discovered dimension so a later run can detect a model change.
-    if report.embedding_dimension is not None:
-        try:
-            write_meta(settings, report.embedding_dimension)
-            print("recorded embedding model and dimension in the meta collection")
-        except Exception as exc:
-            print(f"could not record metadata: {exc}", file=sys.stderr)
+    # 保存本次测得的维度，以便下次启动时发现模型变化。
+    if report.embedding_dimension is not None:  # 只有探测到具体维度后才写入元数据。
+        try:  # 在此捕获后续操作可能产生的异常。
+            write_meta(settings, report.embedding_dimension)  # 在建库元数据中记录当前模型及实测维度。
+            print("recorded embedding model and dimension in the meta collection")  # 告知用户元数据已写入。
+        except Exception as exc:  # 捕获通用异常。
+            print(f"could not record metadata: {exc}", file=sys.stderr)  # 元数据保存失败时输出具体原因。
 
-    return 0 if report.healthy else 1
+    return 0 if report.healthy else 1  # 所有依赖健康时返回零，否则返回一。
 
 
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+if __name__ == "__main__":  # 仅在直接执行脚本时启动自检。
+    raise SystemExit(main(sys.argv[1:]))  # 用入口函数的结果作为进程状态码。
