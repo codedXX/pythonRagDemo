@@ -164,3 +164,28 @@ class TestRRF:  # 定义 TestRRF 类型。
 
         # 单个通道对同一候选只按最高名次计分一次。
         assert fused["a"] == pytest.approx(1 / 61)  # 确认融合结果中的a等于approx的结果。
+
+def test_fusion_ranks_and_partial_rerank_preserve_unscored_candidates():
+    from unittest.mock import Mock
+    from rag_demo.config import RetrievalSettings
+    from rag_demo.embedding.rerank import RerankResult
+    from rag_demo.retrieval.hybrid import Candidate, HybridRetriever
+
+    def candidate(identifier, **ranks):
+        return Candidate(identifier, "parent", "text", "", 1, "source", **ranks)
+
+    settings = RetrievalSettings()
+    reranker = Mock()
+    retriever = HybridRetriever(settings, None, None, None, reranker)
+    fused = retriever._fuse(
+        [candidate("shared", dense_rank=0), candidate("a", dense_rank=1)],
+        [candidate("shared", sparse_rank=0), candidate("b", sparse_rank=1)],
+    )
+    assert [(c.id, c.dense_rank, c.sparse_rank, c.fused_rank) for c in fused] == [
+        ("shared", 0, 0, 0), ("a", 1, None, 1), ("b", None, 1, 2)
+    ]
+    assert [c.fused_score for c in fused] == pytest.approx([2/61, 1/62, 1/62])
+    reranker.rerank.return_value = [RerankResult(index=2, score=0.9)]
+    result, applied, error = retriever._rerank("query", fused)
+    assert applied and error is None
+    assert [(c.id, c.rerank_rank) for c in result] == [("b", 0), ("shared", None), ("a", None)]

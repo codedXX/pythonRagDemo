@@ -16,7 +16,9 @@ from rag_demo.generation.llm import Generator  # 从 rag_demo.generation.llm 导
 from rag_demo.ingestion import IngestionPipeline  # 从 rag_demo.ingestion 导入入库流程。
 from rag_demo.retrieval.hybrid import HybridRetriever  # 从 rag_demo.retrieval.hybrid 导入混合检索器。
 from rag_demo.retrieval.lexical import LexicalIndex  # 从 rag_demo.retrieval.lexical 导入关键词索引。
-from rag_demo.selfcheck import SelfCheckReport, run_selfcheck  # 从 rag_demo.selfcheck 引入本模块使用的类型和工具。
+from rag_demo.selfcheck import (
+    DependencyReport, SelfCheckReport, Status, check_dependencies, check_stored_dimension,
+)
 from rag_demo.store.milvus_store import MilvusStore  # 从 rag_demo.store.milvus_store 导入向量库客户端。
 from rag_demo.store.registry import DocumentRegistry  # 从 rag_demo.store.registry 导入文档登记表。
 
@@ -41,22 +43,46 @@ class Services:  # 保存接口处理请求所需的服务实例。
     dimension: int | None = None  # 设置向量维度字段的默认值。
     _lexical_lock: threading.Lock = field(default_factory=threading.Lock)  # 设置关键词索引重建锁字段的默认值。
 
+    _storage_lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _storage_ready: bool = field(default=False, init=False)
+
     def refresh_lexical_index(self) -> int:  # 按存储中的有效文档重建关键词索引。
         """按存储中的有效文档重建关键词索引；用锁串行处理上传和删除触发的重建。"""
         with self._lexical_lock:  # 让多个文档变更触发的索引重建依次执行。
             return self.retriever.rebuild_lexical_index()  # 从有效子块重建关键词索引，并返回条目数。
 
-    def ensure_collections(self) -> None:  # 探测向量维度，再创建缺失的集合。
-        """探测向量维度，再创建缺失的集合。"""
-        if self.dimension is None:  # 当向量维度为空值时进入此分支。
-            self.dimension = self.embedder.probe_dimension("ping")  # 用简短探测文本获得当前模型的真实向量维数。
-        self.store.ensure_collections(dimension=self.dimension)  # 按已知维度建立缺失的集合。
-        self.store.write_meta(  # 保存建库元数据。
-            {  # 开始构造字段映射。
-                "embedding_model": self.settings.embedding.model,  # 填入向量模型名字段。
-                "dimension": self.dimension,  # 填入向量维度字段。
-            }  # 结束本组字段。
-        )  # 结束当前多行表达式。
+    def ensure_collections(self) -> None:
+        """首次写入前校验建库信息；并发上传共享本进程的初始化结果。"""
+        with self._storage_lock:
+            if self._storage_ready:
+                return
+            report = self.selfcheck
+            previous = report.by_name("store_schema") if report else None
+            if previous and not previous.healthy:
+                raise RuntimeError(previous.message)
+
+            if self.dimension is None:
+                self.dimension = self.embedder.probe_dimension("ping")
+            schema = check_stored_dimension(
+                self.settings, self.dimension, store=self.store, record_if_missing=True
+            )
+            if schema.healthy:
+                try:
+                    self.store.ensure_collections(self.dimension)
+                except Exception as exc:
+                    schema = DependencyReport(
+                        "store_schema", Status.UNREACHABLE, f"cannot initialise storage collections: {exc}",
+                    )
+
+            if report is None:
+                report = SelfCheckReport([], self.dimension, self.settings.embedding.model)
+                self.selfcheck = report
+            if previous:
+                report.dependencies.remove(previous)
+            report.dependencies.append(schema)
+            if not schema.healthy:
+                raise RuntimeError(schema.message)
+            self._storage_ready = True
 
 
 def build_services(settings: Settings) -> Services:  # 根据配置连接各项服务。
@@ -93,7 +119,7 @@ def initialise(services: Services, verify: bool = True) -> SelfCheckReport | Non
     report: SelfCheckReport | None = None  # 将报告设为空值。
     if verify:  # 当自检开关有效时进入此分支。
         try:  # 在此捕获后续操作可能产生的异常。
-            report = run_selfcheck(services.settings, include_llm=False)  # 执行启动自检，这里跳过单独的生成探测。
+            report = check_dependencies(services.settings, include_llm=False)  # 执行启动自检，这里跳过单独的生成探测。
             services.selfcheck = report  # 将自检设为报告。
             for dependency in report.dependencies:  # 遍历依赖项列表，逐项取得依赖项。
                 logger.info(  # 记录运行信息。
@@ -105,24 +131,11 @@ def initialise(services: Services, verify: bool = True) -> SelfCheckReport | Non
         except Exception as error:  # pragma: no cover  # 记录后继续运行。
             logger.warning("self-check failed to run: %s", error)  # 记录警告。
 
-    dimension = services.selfcheck.embedding_dimension if services.selfcheck else None  # 先使用已完成自检报告中的向量维度。
-    if dimension is None:  # 当向量维度为空值时进入此分支。
-        try:  # 在此捕获后续操作可能产生的异常。
-            dimension = services.embedder.probe_dimension("ping")  # 报告缺少维度时直接向编码器探测。
-        except Exception as error:  # 捕获通用异常。
-            logger.warning(  # 记录警告。
-                "cannot discover embedding dimension (%s); collections are not "  # 说明向量维度探测失败。
-                "initialised until a provider is reachable",  # 提示需要等供应商可用后再初始化集合。
-                error,  # 传入错误。
-            )  # 结束当前多行表达式。
-            return report  # 拿不到维度时保留检查报告，暂缓建库。
+    if report is not None:
+        services.dimension = report.embedding_dimension
 
-    try:  # 在此捕获后续操作可能产生的异常。
-        services.dimension = dimension  # 保存传入的向量维度。
-        services.store.ensure_collections(dimension=dimension)  # 按实测维度准备存储集合。
-        services.store.write_meta(  # 保存建库元数据。
-            {"embedding_model": services.settings.embedding.model, "dimension": dimension}  # 将实际模型和维度一起写入建库元数据。
-        )  # 结束当前多行表达式。
+    try:
+        services.ensure_collections()
         count = services.refresh_lexical_index()  # 从数据库中的有效子块恢复关键词索引。
         logger.info("lexical index rebuilt with %s units", count)  # 记录运行信息。
     except Exception as error:  # pragma: no cover  # 启动期间记录后继续运行。

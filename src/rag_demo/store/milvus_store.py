@@ -76,6 +76,10 @@ class ParentUnit:  # 保存一条提供给生成模型的父块记录。
         }  # 结束本组字段。
 
 
+class InvalidStoreMetadata(ValueError):
+    """已有建库记录无法描述向量模型和维度。"""
+
+
 class MilvusStore:  # 管理三个集合的结构和底层读写。
     """管理三个集合的结构和底层读写。"""
 
@@ -194,19 +198,24 @@ class MilvusStore:  # 管理三个集合的结构和底层读写。
         """返回已保存的建库元数据；无记录时返回空字典。"""
         if not self.client.has_collection(self.meta_name):  # 集合尚未创建时没有可读取的建库元数据。
             return {}  # 返回空字典。
-        try:  # 在此捕获后续操作可能产生的异常。
-            rows = self.client.query(  # 将记录列表设为查询的结果。
-                self.meta_name, filter="", output_fields=["key", "value"], limit=100  # 为查询提供输入。
-            )  # 结束当前多行表达式。
-        except Exception:  # 捕获通用异常。
-            return {}  # 返回空字典。
-        raw = {row["key"]: row["value"] for row in rows}  # 将查询行转成以元数据名称为键的映射。
-        if "schema" not in raw:  # 当“schema”未包含在原始数据时进入此分支。
-            return {}  # 返回空字典。
-        try:  # 在此捕获后续操作可能产生的异常。
-            return json.loads(raw["schema"])  # 解码预先存储的模型及维度元数据。
-        except ValueError:  # 捕获值错误。
-            return {}  # 返回空字典。
+        rows = self.client.query(
+            self.meta_name, filter='key == "schema"', output_fields=["value"], limit=1
+        )
+        if not rows:
+            return {}
+        try:
+            schema = json.loads(rows[0]["value"])
+        except json.JSONDecodeError as exc:
+            raise InvalidStoreMetadata("stored schema contains invalid JSON") from exc
+        if not (
+            isinstance(schema, dict)
+            and isinstance(schema.get("embedding_model"), str)
+            and schema["embedding_model"]
+            and type(schema.get("dimension")) is int
+            and schema["dimension"] > 0
+        ):
+            raise InvalidStoreMetadata("stored schema requires an embedding model and a positive dimension")
+        return schema
 
     def write_meta(self, payload: dict) -> None:  # 写入建库元数据，覆盖旧值。
         """写入建库元数据，覆盖旧值。"""
@@ -329,12 +338,8 @@ class MilvusStore:  # 管理三个集合的结构和底层读写。
             if not self.client.has_collection(name):  # 检查名称是否尚未创建。
                 stats[name] = 0  # 将统计信息中对应的项设为0。
                 continue  # 跳过本项，继续处理下一项。
-            try:  # 在此捕获后续操作可能产生的异常。
-                # 计数查询禁止分页，因此省略普通空过滤查询所需的条数参数。
-                rows = self.client.query(name, filter="", output_fields=["count(*)"])  # 计数查询只请求聚合字段，并省略分页参数。
-                stats[name] = int(rows[0]["count(*)"]) if rows else 0  # 有聚合结果时取其整数值，无结果时记零。
-            except Exception:  # 捕获通用异常。
-                stats[name] = -1  # 用负一标记查询失败，以区别于确实没有记录。
+            rows = self.client.query(name, filter="", output_fields=["count(*)"])
+            stats[name] = int(rows[0]["count(*)"])
         return stats  # 返回统计信息。
 
     def drop_all(self) -> None:  # 删除本项目的集合，供测试清理或重建使用。

@@ -202,13 +202,16 @@ function describeDoc(doc) {  // 生成文档状态摘要。
 
 async function loadDocuments() {  // 刷新知识库文档列表。
   try {  // 尝试执行本次操作。
-    const data = await (await fetch('/api/docs')).json();  // 读取文档登记信息。
-    els.docList.replaceChildren();  // 清空旧列表。
-    if (!data.documents || data.documents.length === 0) {  // 识别尚未上传文档的情况。
+    const response = await fetch('/api/docs');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { documents } = await response.json();
+    if (!Array.isArray(documents)) throw new Error('响应缺少文档列表');
+    els.docList.replaceChildren();
+    if (documents.length === 0) {
       els.docList.append(el('li', 'doc-sub', '还没有文档'));  // 显示空列表提示。
       return;  // 结束当前处理。
     }  // 结束当前代码块。
-    for (const doc of data.documents) {  // 依次展示各份文档。
+    for (const doc of documents) {  // 依次展示各份文档。
       const item = el('li', `doc-item ${doc.state}`);  // 按文档状态创建列表项。
       const meta = el('div', 'doc-meta');  // 创建文档摘要容器。
       meta.append(el('span', 'doc-name', doc.name));  // 显示文件名。

@@ -214,9 +214,7 @@ class HybridRetriever:  # 执行双路召回、排名融合、重排与父块扩
 
         result: list[Candidate] = []  # 初始化结果为空列表。
         for rank, (identifier, score) in enumerate(fused):  # 按融合后的顺序取出子块标识及得分。
-            candidate = by_id.get(identifier)  # 将候选项设为按标识归集的候选中的对应值。
-            if candidate is None:  # pragma: no cover  # 防御性处理。
-                continue  # 跳过本项，继续处理下一项。
+            candidate = by_id[identifier]
             candidate.fused_score = score  # 在候选上记下两路合计分数。
             candidate.fused_rank = rank  # 保存该候选在融合列表中的位置。
             result.append(candidate)  # 将候选项加入结果。
@@ -242,15 +240,10 @@ class HybridRetriever:  # 执行双路召回、排名融合、重排与父块扩
 
         reranked: list[Candidate] = []  # 初始化重排结果为空列表。
         for rank, result in enumerate(results):  # 遍历结果列表及各项的下标，逐项取得排名、结果。
-            if not 0 <= result.index < len(subset):  # 跳过超出输入候选范围的下标。
-                continue  # 跳过本项，继续处理下一项。
             candidate = subset[result.index]  # 通过模型返回的下标找到原来的候选。
             candidate.rerank_score = result.score  # 保存模型给出的相关性分数。
             candidate.rerank_rank = rank  # 保存模型排序后的名次。
             reranked.append(candidate)  # 将候选项加入重排结果。
-
-        if not reranked:  # pragma: no cover  # 防御性处理。
-            return fused, False, "reranker returned no usable results"  # 返回组合值。
 
         # 未获重排分数的候选按原融合顺序附在末尾。
         scored = {c.id for c in reranked}  # 收集已被模型打过分的子块标识。

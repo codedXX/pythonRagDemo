@@ -138,6 +138,7 @@ async def upload_documents(request: Request, files: list[UploadFile] = File(...)
 
             def worker(filename=name, payload=content):  # 为当前文件绑定参数，在后台线程执行入库。
                 try:  # 在此捕获后续操作可能产生的异常。
+                    services.ensure_collections()
                     outcome["result"] = services.pipeline.ingest(  # 保存正常完成的入库结果。
                         filename, payload, on_progress=on_progress  # 将文件名、原始字节及实时进度回调传给入库流程。
                     )  # 结束当前多行表达式。

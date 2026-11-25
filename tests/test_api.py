@@ -99,6 +99,12 @@ class FakeStore:  # 定义 FakeStore 类型。
     def __init__(self) -> None:  # 保存实例所需的配置和依赖。
         self.deleted: list[str] = []  # 初始化deleted为空列表。
 
+    def read_meta(self):
+        return {"embedding_model": Settings().embedding.model, "dimension": 1024}
+
+    def ensure_collections(self, dimension):
+        pass
+
     def delete_document(self, doc_id):  # 定义删除文档的处理逻辑。
         self.deleted.append(doc_id)  # 将文档标识加入deleted。
 

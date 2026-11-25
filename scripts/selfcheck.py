@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))  # 将�
 # 从 rag_demo.config 引入本模块使用的类型和工具。
 from rag_demo.config import ConfigurationError, load_settings  # noqa: E402
 # 从 rag_demo.selfcheck 引入本模块使用的类型和工具。
-from rag_demo.selfcheck import format_report, run_selfcheck, write_meta  # noqa: E402
+from rag_demo.selfcheck import format_report, run_selfcheck  # noqa: E402
 
 
 def main(argv: list[str]) -> int:  # 执行命令行自检，并返回可用于部署判断的退出码。
@@ -38,16 +38,8 @@ def main(argv: list[str]) -> int:  # 执行命令行自检，并返回可用于�
 
     print(f"checking dependencies (config: {config_path})")  # 显示即将检查的配置文件位置。
     print()  # 在终端输出空行以隔开检查标题和结果。
-    report = run_selfcheck(settings, include_llm=not skip_llm)  # 按命令行选项决定是否连同生成模型一起探测。
+    report = run_selfcheck(settings, include_llm=not skip_llm, record_if_missing=True)  # 按命令行选项决定是否连同生成模型一起探测。
     print(format_report(report))  # 将各项检查状态以可读形式输出。
-
-    # 保存本次测得的维度，以便下次启动时发现模型变化。
-    if report.embedding_dimension is not None:  # 只有探测到具体维度后才写入元数据。
-        try:  # 在此捕获后续操作可能产生的异常。
-            write_meta(settings, report.embedding_dimension)  # 在建库元数据中记录当前模型及实测维度。
-            print("recorded embedding model and dimension in the meta collection")  # 告知用户元数据已写入。
-        except Exception as exc:  # 捕获通用异常。
-            print(f"could not record metadata: {exc}", file=sys.stderr)  # 元数据保存失败时输出具体原因。
 
     return 0 if report.healthy else 1  # 所有依赖健康时返回零，否则返回一。
 

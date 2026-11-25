@@ -325,3 +325,72 @@ class TestMultiTurn:  # 定义 TestMultiTurn 类型。
         events = _events(app_client.post("/api/chat", json={"question": "混合检索是什么？"}))  # 将事件集合设为解析事件序列的结果。
 
         assert not [payload for name, payload in events if name == "rewritten"]  # 确认不满足“从事件集合中提取的各项”。
+
+def test_restart_protects_existing_upload_when_model_changes(settings, tmp_path, monkeypatch):
+    from rag_demo.api import services as service_module
+
+    isolated = settings.model_copy(deep=True)
+    suffix = uuid.uuid4().hex
+    isolated.milvus.child_collection = f"schema_child_{suffix}"
+    isolated.milvus.parent_collection = f"schema_parent_{suffix}"
+    isolated.milvus.meta_collection = f"schema_meta_{suffix}"
+    isolated.storage.sqlite_path = str(tmp_path / "schema.db")
+    monkeypatch.setattr(service_module, "Embedder", lambda _: HashEmbedder())
+    store = MilvusStore(isolated)
+
+    def restart():
+        graph = service_module.build_services(isolated)
+        service_module.initialise(graph, verify=False)
+        return TestClient(create_app(isolated, graph))
+
+    def upload(client, body):
+        return dict(_events(client.post("/api/docs", files={"files": ("same.md", body, "text/markdown")})))
+
+    def snapshot(client):
+        children = store.all_active_children()
+        return (client.get("/api/docs").json(), store.read_meta(), children,
+                store.fetch_parents(row["parent_id"] for row in children), store.collection_stats())
+
+    original_model = isolated.embedding.model
+    try:
+        fresh = restart()
+        assert "done" in upload(fresh, b"# Original\n\nFirst document.")
+        before = snapshot(fresh)
+        assert before[1] == {"embedding_model": original_model, "dimension": DIM}
+        assert before[2] and before[3]
+        assert snapshot(restart()) == before
+
+        isolated.embedding.model = "different-model-at-same-dimension"
+        incompatible = restart()
+        report = incompatible.get("/api/health").json()
+        assert any(d["name"] == "store_schema" and d["status"] == "misconfigured"
+                   for d in report["dependencies"])
+        assert original_model in upload(incompatible, b"# Replacement")["failed"]["error"]
+        assert snapshot(incompatible) == before
+
+        isolated.embedding.model = original_model
+        assert "done" in upload(restart(), b"# Replacement\n\nSecond document.")
+        assert store.read_meta() == before[1]
+        assert store.all_active_children() != before[2]
+    finally:
+        store.drop_all()
+
+
+def test_bm25_failure_and_zero_hits_have_distinct_chat_results(app_client, monkeypatch):
+    from unittest.mock import Mock
+
+    services = app_client.services
+    upload = app_client.post("/api/docs", files={"files": ("guide.md", MARKDOWN_DOC["body"].encode())})
+    assert "done" in dict(_events(upload))
+    failing_search = Mock(side_effect=RuntimeError("BM25 failed"))
+    monkeypatch.setattr(services.lexical._retriever, "retrieve", failing_search)
+    failed = _events(app_client.post("/api/chat", json={"question": "混合检索"}))
+    assert failed[-1][0] == "error"
+    assert "BM25 failed" in failed[-1][1]["message"]
+    assert services.answerer.generator.prompts == []
+
+    # 停用词没有关键词命中，但仍能用向量候选生成回答。
+    answered = dict(_events(app_client.post("/api/chat", json={"question": "the", "debug": True})))
+    assert answered["debug"]["dense"] and not answered["debug"]["sparse"]
+    assert "done" in answered and len(services.answerer.generator.prompts) == 1
+    failing_search.assert_called_once()

@@ -148,10 +148,7 @@ class LexicalIndex:  # 在内存中保存子块的 BM25 索引。
             return []  # 返回空列表。
 
         k = min(max(1, limit), len(ids))  # 把请求条数限制在一到语料总数之间。
-        try:  # 在此捕获后续操作可能产生的异常。
-            results, scores = retriever.retrieve([query_tokens], k=k, show_progress=False)  # 查询本批唯一的问题，取得语料下标和相关性分数。
-        except Exception:  # 捕获通用异常。
-            return []  # 返回空列表。
+        results, scores = retriever.retrieve([query_tokens], k=k, show_progress=False)
 
         hits: list[LexicalHit] = []  # 初始化命中项为空列表。
         for rank, (index, score) in enumerate(zip(results[0], scores[0], strict=True)):  # 遍历逐项配对的结果及各项的下标，逐项取得组合值。
