@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field  # 从 pydantic 引入本模块使用的�
 ENV_PREFIX = "RAG__"  # 将环境变量前缀设为“RAG__”。
 
 # 需要在日志、错误提示和健康状态中隐藏的字段。
-SECRET_FIELDS = frozenset({"api_key", "token"})  # 将敏感字段集合设为frozenset的结果。
+SECRET_FIELDS = frozenset({"api_key", "token", "password"})  # 将敏感字段集合设为frozenset的结果。
 
 
 class ConfigurationError(RuntimeError):  # 配置缺失或各字段相互矛盾时抛出此异常。
@@ -88,8 +88,15 @@ class ParsingSettings(BaseModel):  # 集中管理解析配置参数。
     min_chars_per_page: int = 40  # 设置最低平均字符数字段的默认值。
 
 
+class MySQLSettings(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 3306
+    database: str = "rag_demo"
+    user: str = "rag_demo"
+    password: str = Field(default="", repr=False)
+
+
 class StorageSettings(BaseModel):  # 集中管理存储参数。
-    sqlite_path: str = "data/rag.db"  # 设置登记数据库路径字段的默认值。
     embedding_cache_path: str = "data/embedding_cache"  # 设置向量缓存路径字段的默认值。
     max_upload_mb: int = 50  # 设置单文件上传上限（兆字节）字段的默认值。
 
@@ -103,6 +110,7 @@ class Settings(BaseModel):  # 集中管理参数。
     llm: LLMSettings = Field(default_factory=LLMSettings)  # 设置生成模型字段的默认值。
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)  # 设置向量字段的默认值。
     rerank: RerankSettings = Field(default_factory=RerankSettings)  # 设置重排字段的默认值。
+    mysql: MySQLSettings = Field(default_factory=MySQLSettings)
     milvus: MilvusSettings = Field(default_factory=MilvusSettings)  # 设置向量库字段的默认值。
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)  # 设置切块字段的默认值。
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)  # 设置检索配置字段的默认值。
@@ -115,9 +123,6 @@ class Settings(BaseModel):  # 集中管理参数。
 
     def data_dir(self) -> Path:  # 定义数据目录的处理逻辑。
         return self.root / "data"  # 将数据目录定位在项目根目录下。
-
-    def sqlite_path(self) -> Path:  # 定义登记数据库路径的处理逻辑。
-        return self.root / self.storage.sqlite_path  # 把配置的登记库路径解析到项目根目录。
 
     def embedding_cache_dir(self) -> Path:  # 定义向量缓存目录的处理逻辑。
         return self.root / self.storage.embedding_cache_path  # 把配置的向量缓存路径解析到项目根目录。

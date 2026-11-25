@@ -10,10 +10,15 @@ dist/
 config.yaml
 .env
 
+# Local IDE configuration
+/.idea/
+/.run/
+
 # Runtime data: SQLite registry, embedding cache, uploaded files.
 data/
 
 # Test and tooling artefacts
+/tests/
 .pytest_cache/
 .coverage
 htmlcov/

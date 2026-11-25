@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-multipart>=0.0.9",
     "scipy>=1.13",
+    "pymysql[rsa]>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -38,4 +39,4 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
-markers = ["integration: requires a live external service (Milvus)"]
+markers = ["integration: requires a local MySQL or Milvus service"]

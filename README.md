@@ -16,7 +16,7 @@
 
 ### 1. 环境
 
-需要 Python 3.13（由 `uv` 管理）、一个拿到的 Milvus 实例。
+需要 Python 3.13（由 `uv` 管理）、本机原生 MySQL 8.4 和可访问的 Milvus 实例。
 
 ```bash
 # 安装 uv（若尚未安装）
@@ -42,7 +42,25 @@ docker compose up -d    # 默认监听 127.0.0.1:19530
 nc -z 127.0.0.1 19530 && echo "milvus reachable"
 ```
 
-### 3. 配置密钥
+### 3. 本机 MySQL 登记库
+
+在应用所在机器上启动原生安装的 MySQL。macOS 使用官方安装包时，可在「系统设置 → MySQL」中启动服务。使用 Homebrew 安装的 mysql@8.4 时，运行 `brew services start mysql@8.4`。应用默认通过 TCP 连接 `127.0.0.1:3306`。
+
+用管理员账号登录 MySQL，在首次部署时创建库和应用账号。以下 SQL 会返回应用账号的随机密码，请将它填入本地配置的 `mysql.password` 或环境变量 `RAG__MYSQL__PASSWORD`。
+
+```sql
+CREATE DATABASE rag_demo CHARACTER SET utf8mb4;
+CREATE USER 'rag_demo'@'127.0.0.1' IDENTIFIED BY RANDOM PASSWORD;
+GRANT CREATE, SELECT, INSERT, UPDATE, DELETE ON `rag\_demo`.* TO 'rag_demo'@'127.0.0.1';
+```
+
+通过 TCP 验证账号和库名，按提示输入密码。若本机使用其他端口，请一并调整 `mysql.port` 与命令中的端口。
+
+```bash
+mysql --protocol=TCP -h 127.0.0.1 -P 3306 -u rag_demo -p rag_demo -e 'SELECT DATABASE(), VERSION()'
+```
+
+### 4. 配置密钥
 
 ```bash
 cp config.example.yaml config.yaml
@@ -58,7 +76,7 @@ cp config.example.yaml config.yaml
 
 `config.yaml` 已在 `.gitignore` 中，不会被提交。
 
-### 4. 跑自检（**强烈建议**）
+### 5. 跑自检（**强烈建议**）
 
 ```bash
 uv run python scripts/selfcheck.py
@@ -78,7 +96,7 @@ uv run python scripts/selfcheck.py
 > ⚠️ 若 embedding / rerank 的模型名不存在，自检会明确报出模型名与错误码。
 > 改 `config.yaml` 里的 `model` 一行即可，不需要改代码。
 
-### 5. 启动
+### 6. 启动
 
 ```bash
 uv run python scripts/serve.py
@@ -100,7 +118,7 @@ FastAPI
     ├── 解析      PyMuPDF / Markdown AST，扫描件拒收
     ├── 分块      结构优先 + 语义兜底 → 父块 ⊃ 子块
     ├── 向量化    百炼 OpenAI 兼容端点，批处理 + 退避重试 + 内容哈希缓存
-    ├── 存储      Milvus 双 collection（Strong 一致性）+ SQLite 文档注册表
+    ├── 存储      Milvus 双 collection（Strong 一致性）+ 本机 MySQL 文档登记表
     ├── 检索      bm25s + jieba ∥ Milvus ANN → RRF → 重排 → 父块去重展开
     └── 生成      中转站 /v1/chat/completions，流式
 ```
@@ -147,16 +165,34 @@ reranked ▸ 重排后的名次与分数
 
 重排是否有用，就看同一个 `parent_id` 在 `fused` 与 `reranked` 里的名次差。
 
+## 将已有 SQLite 登记库切换到本机 MySQL
+
+1. 暂停上传和删除，等在途任务结束后停止旧服务。保留旧版程序、配置及原 SQLite 文件。使用旧配置的实际路径备份登记库，例如 `sqlite3 data/rag.db ".backup 'data/rag-before-mysql.db'"`。
+2. 按快速开始准备 MySQL 空库并配置账号，继续使用原 Milvus 集合。执行迁移命令。它以只读方式打开备份，按原 ID 导入全部状态，在同一事务内逐条核对九个字段，并报告总行数和各状态计数。
+
+   ```bash
+   uv run python scripts/migrate_registry.py data/rag-before-mysql.db --config config.yaml
+   ```
+
+3. 对比 `sqlite3 -readonly data/rag-before-mysql.db 'SELECT state, COUNT(*) FROM documents GROUP BY state'` 与命令输出。完全相同的目标可重复执行。目标已有差异或导入失败时，命令报告原因并以非零状态退出，修复后可重试。
+4. 仅在校验成功后启动新版本，保持写入口关闭。检查 `GET /api/docs` 的 ID、状态与数量，通过问答核对已有 active 文档的引用，再开放上传和删除。
+5. 开放写入前若需回退，停止新版，用旧版、旧配置和已备份的 SQLite 库启动。开放写入后若需回退，先停写并核对期间新增、替换或删除的文档及其 Milvus 片段，确保登记库与当前片段一致。
+
 ## 开发
 
 ```bash
-uv sync --extra dev          # 含 pytest
-uv run pytest -q             # 单元测试（不需要外部服务）
-uv run pytest -m integration # 集成测试（需要 Milvus）
-uv run pytest tests/test_end_to_end.py -m integration
+uv sync --locked --extra dev
+uv run pytest -m "not integration"
 ```
 
-集成测试会自动跳过——没有可达的 Milvus 时不会失败。
+运行 MySQL 集成测试时，在本机 MySQL 实例准备独立测试账号。夹具为每个用例创建并清理以 `ragtest_` 开头的随机数据库。下面的权限仅授予这组测试库。
+
+```sql
+CREATE USER 'ragtest'@'127.0.0.1' IDENTIFIED BY RANDOM PASSWORD;
+GRANT ALL ON `ragtest\_%`.* TO 'ragtest'@'127.0.0.1';
+```
+
+设置 `RAG_TEST_MYSQL_USER=ragtest`、`RAG_TEST_MYSQL_PASSWORD`，按需设置 `RAG_TEST_MYSQL_HOST` 和 `RAG_TEST_MYSQL_PORT`。配置这些环境变量后执行 `uv run pytest -q -rs`。入库和端到端测试还需要本机 Milvus。未指定测试账号时，MySQL 用例会跳过。显式指定了账号但连接失败时，用例会报错。
 
 ## 已知限制
 
@@ -191,7 +227,7 @@ src/rag_demo/
 ├── parsers/             PDF / Markdown 解析、扫描件检测
 ├── chunking/            父子双层分块、语义断点检测
 ├── embedding/           向量化适配器、重排适配器（两套协议）
-├── store/               Milvus 双 collection、SQLite 注册表
+├── store/               Milvus 双 collection、MySQL 登记表
 ├── retrieval/           词法索引、RRF 融合、重排、父块展开
 ├── generation/          流式生成、prompt 组装、追问改写
 └── api/                 FastAPI 路由与装配

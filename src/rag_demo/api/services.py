@@ -88,7 +88,7 @@ class Services:  # 保存接口处理请求所需的服务实例。
 def build_services(settings: Settings) -> Services:  # 根据配置连接各项服务。
     """根据配置连接各项服务；创建集合后维度已固定，因此先从模型实测。"""
     store = MilvusStore(settings)  # 按连接配置建立向量存储对象。
-    registry = DocumentRegistry(settings.sqlite_path())  # 使用配置的数据库文件管理文档登记状态。
+    registry = DocumentRegistry(settings.mysql)
     embedder = Embedder(settings.embedding)  # 构造支持缓存和批处理的向量编码器。
     reranker = Reranker(settings.rerank)  # 为候选重排创建百炼原生协议客户端。
     generator = Generator(settings.llm)  # 创建回答及问题改写使用的生成服务。
