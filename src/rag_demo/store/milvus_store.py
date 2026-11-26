@@ -6,10 +6,10 @@ from __future__ import annotations  # 延后解析类型注解，允许引用尚
 
 import json  # 引入结构化数据的编解码工具。
 from collections.abc import Iterable, Sequence  # 从 collections.abc 引入本模块使用的类型和工具。
-from dataclasses import dataclass  # 从 dataclasses 导入数据类装饰器。
 
 from pymilvus import DataType, MilvusClient  # 从 pymilvus 引入本模块使用的类型和工具。
 
+from rag_demo.chunking.chunker import Child, Parent
 from rag_demo.config import Settings  # 从 rag_demo.config 导入项目配置。
 
 # 限制字段长度，使超长内容在写入时暴露问题。
@@ -21,59 +21,6 @@ MAX_NAME_LEN = 512  # 将MAX_NAME_LEN设为512。
 # 父块只按主键读取，用二维常量满足数据库对向量及索引的最低要求。
 PLACEHOLDER_DIM = 2  # 将PLACEHOLDER_DIM设为2。
 PLACEHOLDER_VECTOR = [0.0, 0.0]  # 将PLACEHOLDER_VECTOR设为列表。
-
-
-@dataclass(slots=True)  # 根据字段声明生成数据类的初始化和比较方法。
-class ChildUnit:  # 保存一条参与检索的子块记录。
-    """保存一条参与检索的子块记录。"""
-
-    id: str  # 声明标识字段。
-    doc_id: str  # 声明文档标识字段。
-    parent_id: str  # 声明所属父块标识字段。
-    child_idx: int  # 声明子块序号字段。
-    text: str  # 声明文本字段。
-    breadcrumb: str  # 声明标题路径字段。
-    page: int  # 声明页码字段。
-    source_name: str  # 声明来源文件名字段。
-    embedding: list[float]  # 声明向量字段。
-
-    def as_row(self) -> dict:  # 组装待写入数据库的一行数据。
-        return {  # 返回字段映射。
-            "id": self.id,  # 填入标识字段。
-            "doc_id": self.doc_id,  # 填入文档标识字段。
-            "parent_id": self.parent_id,  # 填入所属父块标识字段。
-            "child_idx": self.child_idx,  # 填入子块序号字段。
-            "text": self.text[:MAX_TEXT_LEN],  # 按子块文本字段的上限截取正文。
-            "breadcrumb": self.breadcrumb[:MAX_BREADCRUMB_LEN],  # 限制保存的标题路径长度。
-            "page": self.page,  # 填入页码字段。
-            "source_name": self.source_name[:MAX_NAME_LEN],  # 限制保存的来源名称长度。
-            "active": False,  # 先写成未激活状态，整份上传完成后再开放检索。
-            "embedding": self.embedding,  # 填入向量字段。
-        }  # 结束本组字段。
-
-
-@dataclass(slots=True)  # 根据字段声明生成数据类的初始化和比较方法。
-class ParentUnit:  # 保存一条提供给生成模型的父块记录。
-    """保存一条提供给生成模型的父块记录。"""
-
-    parent_id: str  # 声明所属父块标识字段。
-    doc_id: str  # 声明文档标识字段。
-    text: str  # 声明文本字段。
-    breadcrumb: str  # 声明标题路径字段。
-    page_start: int  # 声明起始页字段。
-    source_name: str  # 声明来源文件名字段。
-
-    def as_row(self) -> dict:  # 组装待写入数据库的一行数据。
-        return {  # 返回字段映射。
-            "parent_id": self.parent_id,  # 填入所属父块标识字段。
-            "doc_id": self.doc_id,  # 填入文档标识字段。
-            "text": self.text[:MAX_TEXT_LEN],  # 按父块字段长度上限保存正文。
-            "breadcrumb": self.breadcrumb[:MAX_BREADCRUMB_LEN],  # 按字段上限保存父块标题路径。
-            "page_start": self.page_start,  # 填入起始页字段。
-            "source_name": self.source_name[:MAX_NAME_LEN],  # 填入来源文件名字段。
-            "active": False,  # 父块也要等文档写完后才激活。
-            "placeholder": list(PLACEHOLDER_VECTOR),  # 为每行复制占位向量，父块无需模型编码。
-        }  # 结束本组字段。
 
 
 class InvalidStoreMetadata(ValueError):
@@ -230,16 +177,42 @@ class MilvusStore:  # 管理三个集合的结构和底层读写。
 
     # 写入与激活文档。
 
-    def insert_units(  # 先以未激活状态写入父块和子块。
-        self,  # 通过实例读取本方法所需状态。
-        children: Sequence[ChildUnit],  # 接收子块列表参数。
-        parents: Sequence[ParentUnit],  # 接收父块列表参数。
-    ) -> None:  # 结束参数声明，进入函数或语句主体。
-        """先以未激活状态写入父块和子块；整份文档写完后才允许检索，以免暴露半成品。"""
-        if children:  # 当子块列表有效时进入此分支。
-            self.client.insert(self.child_name, [c.as_row() for c in children])  # 将子块转换为行并批量插入子块集合。
-        if parents:  # 当父块列表有效时进入此分支。
-            self.client.insert(self.parent_name, [p.as_row() for p in parents])  # 父块独立批量写入父块集合。
+    def insert_units(
+        self, children: Sequence[Child], parents: Sequence[Parent], vectors: Sequence[list[float]]
+    ) -> None:
+        """按现有集合字段写入片段，全部写完后由调用方激活。"""
+        child_rows = [
+            {
+                "id": child.id,
+                "doc_id": child.doc_id,
+                "parent_id": child.parent_id,
+                "child_idx": child.child_idx,
+                "text": child.text[:MAX_TEXT_LEN],
+                "breadcrumb": child.breadcrumb[:MAX_BREADCRUMB_LEN],
+                "page": child.page,
+                "source_name": child.source_name[:MAX_NAME_LEN],
+                "active": False,
+                "embedding": normalise(vector),
+            }
+            for child, vector in zip(children, vectors, strict=True)
+        ]
+        parent_rows = [
+            {
+                "parent_id": parent.parent_id,
+                "doc_id": parent.doc_id,
+                "text": parent.text[:MAX_TEXT_LEN],
+                "breadcrumb": parent.breadcrumb[:MAX_BREADCRUMB_LEN],
+                "page_start": parent.page_start,
+                "source_name": parent.source_name[:MAX_NAME_LEN],
+                "active": False,
+                "placeholder": PLACEHOLDER_VECTOR,
+            }
+            for parent in parents
+        ]
+        if child_rows:
+            self.client.insert(self.child_name, child_rows)
+        if parent_rows:
+            self.client.insert(self.parent_name, parent_rows)
 
     def activate_document(self, doc_id: str) -> None:  # 使文档的所有片段可以被检索。
         """使文档的所有片段可以被检索。"""

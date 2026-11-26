@@ -11,7 +11,8 @@ from rag_demo.embedding.rerank import RerankResult  # 从 rag_demo.embedding.rer
 from rag_demo.errors import TransientFailure  # 从 rag_demo.errors 导入暂时性故障。
 from rag_demo.retrieval.hybrid import Context, HybridRetriever  # 从 rag_demo.retrieval.hybrid 引入本模块使用的类型和工具。
 from rag_demo.retrieval.lexical import LexicalIndex  # 从 rag_demo.retrieval.lexical 导入关键词索引。
-from rag_demo.store.milvus_store import ChildUnit, MilvusStore, ParentUnit, normalise  # 从 rag_demo.store.milvus_store 引入本模块使用的类型和工具。
+from rag_demo.chunking.chunker import Child, Parent
+from rag_demo.store.milvus_store import MilvusStore, normalise  # 从 rag_demo.store.milvus_store 引入本模块使用的类型和工具。
 
 pytestmark = pytest.mark.integration  # 将pytestmark设为pytest.mark.integration。
 
@@ -101,11 +102,12 @@ def _populate(store, doc_id: str, parents: dict[str, tuple[str, str]], children_
     parent_units = []  # 初始化parent_units为空列表。
     for index, (parent_id, (parent_text, breadcrumb)) in enumerate(parents.items()):  # 遍历父块列表的键值对及各项的下标，逐项取得组合值。
         parent_units.append(  # 将父块记录的结果加入parent_units。
-            ParentUnit(  # 为父块记录提供输入。
+            Parent(  # 为父块记录提供输入。
                 parent_id=parent_id,  # 传入所属父块标识参数。
                 doc_id=doc_id,  # 传入文档标识参数。
                 text=parent_text,  # 传入文本参数。
                 breadcrumb=breadcrumb,  # 传入标题路径参数。
+                index=index,
                 page_start=index + 1,  # 传入起始页参数。
                 source_name=f"{doc_id}.pdf",  # 传入来源文件名参数。
             )  # 结束当前多行表达式。
@@ -113,7 +115,7 @@ def _populate(store, doc_id: str, parents: dict[str, tuple[str, str]], children_
         for child_idx in range(children_per_parent):  # 遍历指定的下标范围，逐项取得子块序号。
             text = f"{parent_text} part {child_idx}"  # 将文本设为格式化文本。
             child_units.append(  # 将子块记录的结果加入child_units。
-                ChildUnit(  # 为子块记录提供输入。
+                Child(  # 为子块记录提供输入。
                     id=f"{parent_id}_c{child_idx}",  # 传入标识参数。
                     doc_id=doc_id,  # 传入文档标识参数。
                     parent_id=parent_id,  # 传入所属父块标识参数。
@@ -122,10 +124,10 @@ def _populate(store, doc_id: str, parents: dict[str, tuple[str, str]], children_
                     breadcrumb=breadcrumb,  # 传入标题路径参数。
                     page=index + 1,  # 传入页码参数。
                     source_name=f"{doc_id}.pdf",  # 传入来源文件名参数。
-                    embedding=_vector(sum(ord(c) for c in text) % 50),  # 传入向量参数。
                 )  # 结束当前多行表达式。
             )  # 结束当前多行表达式。
-    store.insert_units(child_units, parent_units)  # 写入父子块。
+    vectors = [_vector(sum(ord(c) for c in child.text) % 50) for child in child_units]
+    store.insert_units(child_units, parent_units, vectors)  # 写入父子块。
     store.activate_document(doc_id)  # 激活文档。
 
 
@@ -168,7 +170,7 @@ class TestRecall:  # 定义 TestRecall 类型。
         # 写入第二份文档，保留其未激活状态。
         store.insert_units(  # 写入父子块。
             [  # 开始列出各项。
-                ChildUnit(  # 为子块记录提供输入。
+                Child(  # 为子块记录提供输入。
                     id="d2_p0_c0",  # 传入标识参数。
                     doc_id="d2",  # 传入文档标识参数。
                     parent_id="d2_p0",  # 传入所属父块标识参数。
@@ -177,19 +179,20 @@ class TestRecall:  # 定义 TestRecall 类型。
                     breadcrumb="ch1",  # 传入标题路径参数。
                     page=1,  # 传入页码参数。
                     source_name="d2.pdf",  # 传入来源文件名参数。
-                    embedding=_vector(9),  # 传入向量参数。
                 )  # 结束当前多行表达式。
             ],  # 结束列表。
             [  # 开始列出各项。
-                ParentUnit(  # 为父块记录提供输入。
+                Parent(  # 为父块记录提供输入。
                     parent_id="d2_p0",  # 传入所属父块标识参数。
                     doc_id="d2",  # 传入文档标识参数。
                     text="inactive content here",  # 传入文本参数。
                     breadcrumb="ch1",  # 传入标题路径参数。
+                    index=0,
                     page_start=1,  # 传入起始页参数。
                     source_name="d2.pdf",  # 传入来源文件名参数。
                 )  # 结束当前多行表达式。
             ],  # 结束列表。
+            [_vector(9)],
         )  # 结束当前多行表达式。
         retriever = _retriever(settings, store)  # 将检索器设为检索器的结果。
 

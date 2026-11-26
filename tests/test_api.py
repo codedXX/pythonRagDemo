@@ -81,13 +81,10 @@ class FakePipeline:  # 定义 FakePipeline 类型。
         self.error = error  # 保存传入的错误。
         self.ingested: list[tuple[str, bytes]] = []  # 初始化ingested为空列表。
 
-    def ingest(self, name, content, on_progress=None, doc_id=None):  # 定义入库的处理逻辑。
-        from rag_demo.ingestion import IngestResult, IngestionError, Progress, Stage  # 从 rag_demo.ingestion 引入本模块使用的类型和工具。
+    def ingest(self, name, content):
+        from rag_demo.ingestion import IngestResult
 
-        self.ingested.append((name, content))  # 将名称、内容加入ingested。
-        for stage in (Stage.PARSING, Stage.CHUNKING, Stage.EMBEDDING, Stage.PERSISTING):  # 遍历组合值，逐项取得阶段。
-            if on_progress:  # 当进度回调有效时进入此分支。
-                on_progress(Progress(stage=stage, message=f"{stage.value}...", current=1, total=2))  # 进度回调。
+        self.ingested.append((name, content))
         if self.error:  # 当错误有效时进入此分支。
             raise self.error  # 向上抛出当前异常。
         return IngestResult(  # 返回入库结果的结果。
@@ -353,61 +350,38 @@ class TestChatStream:  # 定义 TestChatStream 类型。
         assert set(debug) >= {"query", "dense", "sparse", "fused", "reranked"}  # 确认去重集合至少为集合。
 
 
-class TestUploadStream:  # 定义 TestUploadStream 类型。
-    def test_progress_events_precede_completion(self):  # 验证进度事件先于完成通知。
-        client = _client(Fakes())  # 将客户端设为测试客户端的结果。
+class TestUploadResults:
+    def test_duplicate_names_have_ordered_results(self):
+        fakes = Fakes()
+        response = _client(fakes).post("/api/docs", files=[
+            ("files", ("same.md", b"first")), ("files", ("same.md", b"second"))
+        ])
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/json"
+        assert fakes.pipeline.ingested == [("same.md", b"first"), ("same.md", b"second")]
+        assert response.json()["results"] == [
+            {"name": "same.md", "status": "ok", "doc_id": "d1", "parents": 2,
+             "children": 4, "duration": 0.4}
+        ] * 2
 
-        response = client.post(  # 向“/api/docs”发送提交请求并保存响应。
-            "/api/docs", files={"files": ("notes.md", b"# hi\n\ntext", "text/markdown")}  # 填入文件列表字段。
-        )  # 结束当前多行表达式。
-        names = [name for name, _ in _events(response)]  # 将名称列表设为从解析事件序列的结果中提取的各项。
+    def test_mixed_batch_continues_after_failure_or_size_rejection(self):
+        from unittest.mock import Mock
+        from rag_demo.ingestion import IngestionError
 
-        assert names[0] == "start"  # 确认名称列表的首项等于“start”。
-        assert "progress" in names  # 确认“progress”包含在名称列表。
-        assert names.index("progress") < names.index("done")  # 确认索引的结果小于索引的结果。
-        assert names[-1] == "complete"  # 确认名称列表中对应的项等于“complete”。
-
-    def test_stages_are_reported_in_order(self):  # 验证按处理顺序报告各阶段。
-        client = _client(Fakes())  # 将客户端设为测试客户端的结果。
-
-        response = client.post(  # 向“/api/docs”发送提交请求并保存响应。
-            "/api/docs", files={"files": ("notes.md", b"content", "text/markdown")}  # 填入文件列表字段。
-        )  # 结束当前多行表达式。
-        stages = [  # 将阶段列表设为从解析事件序列的结果中提取的各项。
-            payload["stage"]  # 组合当前结果所需的各项数据。
-            for name, payload in _events(response)  # 逐项处理推导式中的name, payload。
-            if name == "progress"  # 按条件筛选或选择当前值。
-        ]  # 结束列表。
-
-        assert stages == ["parsing", "chunking", "embedding", "persisting"]  # 确认阶段列表等于列表。
-
-    def test_failure_names_the_stage(self):  # 验证错误信息包含失败阶段。
-        from rag_demo.ingestion import IngestionError, Stage  # 从 rag_demo.ingestion 引入本模块使用的类型和工具。
-
-        fakes = Fakes(pipeline=FakePipeline(error=IngestionError(Stage.PARSING, "scanned pdf")))  # 将模拟服务设为模拟组件的结果。
-        client = _client(fakes)  # 将客户端设为测试客户端的结果。
-
-        response = client.post(  # 向“/api/docs”发送提交请求并保存响应。
-            "/api/docs", files={"files": ("scan.pdf", b"%PDF-1.4", "application/pdf")}  # 填入文件列表字段。
-        )  # 结束当前多行表达式。
-        failed = [payload for name, payload in _events(response) if name == "failed"]  # 将失败设为从解析事件序列的结果中提取的各项。
-
-        assert failed[0]["stage"] == "parsing"  # 确认失败的首项中的阶段等于“parsing”。
-        assert "scanned" in failed[0]["error"]  # 确认失败的首项中的错误包含“scanned”。
-
-    def test_oversized_file_is_rejected_before_ingestion(self):  # 验证超限文件在进入入库流程前被拒绝。
-        fakes = Fakes()  # 将模拟服务设为模拟组件的结果。
-        client = _client(fakes)  # 将客户端设为测试客户端的结果。
-        # 配置按兆字节计量；临时替换字节上限，以小文件覆盖超限路径。
-        client.app.state.settings.storage.max_upload_mb = 0  # 将单文件上传上限（兆字节）设为0。
-
-        response = client.post(  # 向“/api/docs”发送提交请求并保存响应。
-            "/api/docs", files={"files": ("big.md", b"x" * 10, "text/markdown")}  # 填入文件列表字段。
-        )  # 结束当前多行表达式。
-        names = [name for name, _ in _events(response)]  # 将名称列表设为从解析事件序列的结果中提取的各项。
-
-        assert "rejected" in names  # 确认“rejected”包含在名称列表。
-        assert fakes.pipeline.ingested == []  # 确认fakes.pipeline.ingested等于空列表。
+        fakes = Fakes()
+        success = fakes.pipeline.ingest("notes.md", b"ok")
+        fakes.pipeline.ingest = Mock(side_effect=[IngestionError("parsing: needs OCR"), success])
+        client = _client(fakes)
+        client.app.state.settings.storage.max_upload_mb = 1
+        response = client.post("/api/docs", files=[
+            ("files", ("scan.pdf", b"scan")), ("files", ("big.md", b"x" * (1024**2 + 1))),
+            ("files", ("notes.md", b"ok"))
+        ])
+        scan, big, notes = response.json()["results"]
+        assert scan == {"name": "scan.pdf", "status": "failed", "error": "parsing: needs OCR"}
+        assert big["status"] == "failed" and "1 MB" in big["error"]
+        assert notes["name"] == "notes.md" and notes["status"] == "ok"
+        assert fakes.pipeline.ingest.call_count == 2
 
 
 class TestDocumentManagement:  # 定义 TestDocumentManagement 类型。

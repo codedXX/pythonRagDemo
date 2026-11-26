@@ -6,7 +6,7 @@ import pymupdf  # 引入版面解析库。
 import pytest  # 引入测试框架。
 
 from rag_demo.parsers.base import ScannedDocumentError  # 从 rag_demo.parsers.base 导入缺少文本层异常。
-from rag_demo.parsers.pdf import PdfParser, _is_page_number, _needs_space  # 从 rag_demo.parsers.pdf 引入本模块使用的类型和工具。
+from rag_demo.parsers.pdf import parse_pdf, _is_page_number, _needs_space  # 从 rag_demo.parsers.pdf 引入本模块使用的类型和工具。
 
 
 def _build_pdf(pages: list[str], header: str | None = None) -> bytes:  # 按输入的页面内容各创建一个文本框，可在页边距内绘制重复页眉。
@@ -40,7 +40,7 @@ def test_parses_pages_and_records_page_numbers():  # 验证解析多页文档并
         ]  # 结束列表。
     )  # 结束当前多行表达式。
 
-    document = PdfParser().parse("sample.pdf", data)  # 将文档设为解析的结果。
+    document = parse_pdf("sample.pdf", data)  # 将文档设为解析的结果。
 
     assert document.page_count == 2  # 确认总页数等于2。
     assert document.metadata["format"] == "pdf"  # 确认文档的元数据中的format等于“pdf”。
@@ -51,7 +51,7 @@ def test_parses_pages_and_records_page_numbers():  # 验证解析多页文档并
 def test_text_is_extracted_in_readable_form():  # 验证提取的文本可读。
     data = _build_pdf(["The quick brown fox jumps over the lazy dog. " * 3])  # 将数据设为构造测试文档的结果。
 
-    document = PdfParser().parse("sample.pdf", data)  # 将文档设为解析的结果。
+    document = parse_pdf("sample.pdf", data)  # 将文档设为解析的结果。
     joined = " ".join(s.text for s in document.segments)  # 将拼接结果设为拼接后的从结构片段列表中提取的各项。
 
     assert "quick brown fox" in joined  # 确认“quick brown fox”包含在拼接结果。
@@ -60,7 +60,7 @@ def test_text_is_extracted_in_readable_form():  # 验证提取的文本可读。
 def test_scanned_pdf_is_rejected():  # 缺少文本层的文件应被明确拒绝。
     """缺少文本层的文件应被明确拒绝。"""
     with pytest.raises(ScannedDocumentError) as excinfo:  # 验证下方操作会抛出缺少文本层异常。
-        PdfParser().parse("scan.pdf", _blank_pdf())  # 解析。
+        parse_pdf("scan.pdf", _blank_pdf())  # 解析。
 
     message = str(excinfo.value)  # 将消息设为值的字符串形式。
     assert "image-based" in message  # 确认“image-based”包含在消息。
@@ -72,7 +72,7 @@ def test_low_density_pdf_is_rejected():  # 验证每页文本过少时拒绝入�
     data = _build_pdf(["x"] * 10)  # 将数据设为构造测试文档的结果。
 
     with pytest.raises(ScannedDocumentError):  # 验证下方操作会抛出缺少文本层异常。
-        PdfParser(min_chars_per_page=40).parse("sparse.pdf", data)  # 解析。
+        parse_pdf("sparse.pdf", data, min_chars_per_page=40)  # 解析。
 
 
 def test_density_threshold_is_configurable():  # 验证文本密度阈值可配置。
@@ -80,17 +80,17 @@ def test_density_threshold_is_configurable():  # 验证文本密度阈值可配�
 
     # 提高阈值，验证该文件被判为文本不足。
     with pytest.raises(ScannedDocumentError):  # 验证下方操作会抛出缺少文本层异常。
-        PdfParser(min_chars_per_page=10_000).parse("sample.pdf", data)  # 解析。
+        parse_pdf("sample.pdf", data, min_chars_per_page=10_000)  # 解析。
 
     # 降低阈值，验证同一文件可以通过。
-    assert not PdfParser(min_chars_per_page=1).parse("sample.pdf", data).is_empty()  # 确认不满足“为空的结果”。
+    assert not parse_pdf("sample.pdf", data, min_chars_per_page=1).is_empty()  # 确认不满足“为空的结果”。
 
 
 def test_repeated_header_is_removed():  # 重复页眉位于顶部边缘，应排除以节省上下文预算。
     """重复页眉位于顶部边缘，应排除以节省上下文预算。"""
     pages = [f"Unique body text for page {i} with enough characters to matter." for i in range(5)]  # 将页面列表设为从指定的下标范围中提取的各项。
 
-    document = PdfParser().parse("report.pdf", _build_pdf(pages, header="Running Header"))  # 将文档设为解析的结果。
+    document = parse_pdf("report.pdf", _build_pdf(pages, header="Running Header"))  # 将文档设为解析的结果。
 
     joined = " ".join(s.text for s in document.segments)  # 将拼接结果设为拼接后的从结构片段列表中提取的各项。
     assert "Running Header" not in joined  # 确认“Running Header”未包含在拼接结果。
@@ -102,7 +102,7 @@ def test_body_text_repeating_on_every_page_is_kept():  # 模板正文也可能�
     repeated = "This exact sentence appears on every page because the document is a template. "  # 设置repeated。
     pages = [repeated * 2 + f"Page specific value {i}." for i in range(5)]  # 将页面列表设为从指定的下标范围中提取的各项。
 
-    document = PdfParser().parse("template.pdf", _build_pdf(pages))  # 将文档设为解析的结果。
+    document = parse_pdf("template.pdf", _build_pdf(pages))  # 将文档设为解析的结果。
 
     assert any("appears on every page" in s.text for s in document.segments)  # 确认至少一项满足“片段的文本包含“appears on every page””。
 
@@ -112,20 +112,20 @@ def test_page_numbers_are_dropped():  # 单独占一行的页码应在切块前�
     body = "Real content that should survive the filter, long enough to look like a page. " * 3  # 将正文设为文本内容乘以3。
     data = _build_pdf([body + "\n2", body + "\n3", body + "\n4"])  # 将数据设为构造测试文档的结果。
 
-    document = PdfParser().parse("doc.pdf", data)  # 将文档设为解析的结果。
+    document = parse_pdf("doc.pdf", data)  # 将文档设为解析的结果。
 
     assert not any(s.text.strip().isdigit() for s in document.segments)  # 确认不满足“是否存在满足条件的项的结果”。
 
 
 def test_corrupt_pdf_raises_value_error():  # 验证损坏文件触发值错误。
     with pytest.raises(ValueError):  # 验证下方操作会抛出值错误。
-        PdfParser().parse("broken.pdf", b"not a pdf at all")  # 解析。
+        parse_pdf("broken.pdf", b"not a pdf at all")  # 解析。
 
 
 def test_removed_furniture_is_counted():  # 验证统计被过滤的页眉页脚。
     pages = [f"Body {i} with distinct wording that fills the page out properly." for i in range(4)]  # 将页面列表设为从指定的下标范围中提取的各项。
 
-    document = PdfParser().parse("doc.pdf", _build_pdf(pages, header="Same Header"))  # 将文档设为解析的结果。
+    document = parse_pdf("doc.pdf", _build_pdf(pages, header="Same Header"))  # 将文档设为解析的结果。
 
     assert document.metadata["removed_furniture"] >= 1  # 确认文档的元数据中的removed_furniture不小于1。
 
@@ -161,6 +161,6 @@ def test_document_is_never_emptied_by_furniture_detection():  # 过滤逻辑处�
     """过滤逻辑处理后，有文本的文件仍应产生片段。"""
     pages = ["Header Text"] * 6  # 将页面列表设为列表乘以6。
 
-    document = PdfParser(min_chars_per_page=1).parse("headers.pdf", _build_pdf(pages))  # 将文档设为解析的结果。
+    document = parse_pdf("headers.pdf", _build_pdf(pages), min_chars_per_page=1)  # 将文档设为解析的结果。
 
     assert not document.is_empty()  # 确认不满足“为空的结果”。

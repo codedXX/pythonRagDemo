@@ -110,7 +110,7 @@ uv run python scripts/serve.py
 浏览器静态页 (HTML/CSS/ES modules，零构建)
     │
     │ POST /api/chat (SSE)        · sources 先于 token 到达
-    │ POST /api/docs (SSE)        · 分阶段进度
+    │ POST /api/docs (JSON)       · 逐文件返回导入结果
     │ GET  /api/health            · 依赖状态
     ▼
 FastAPI
@@ -121,6 +121,19 @@ FastAPI
     ├── 存储      Milvus 双 collection（Strong 一致性）+ 本机 MySQL 文档登记表
     ├── 检索      bm25s + jieba ∥ Milvus ANN → RRF → 重排 → 父块去重展开
     └── 生成      中转站 /v1/chat/completions，流式
+```
+
+### 上传接口
+
+向 `POST /api/docs` 提交 multipart 表单，一个或多个文件均使用 `files` 字段。请求结束后一次返回 JSON，结果顺序与提交顺序一致。有效表单返回 HTTP 200，每份文件的 `status` 表示该文件是否成功。下面是同批导入一份 Markdown 和一份扫描 PDF 的响应示例。
+
+```json
+{
+  "results": [
+    {"name": "guide.md", "status": "ok", "doc_id": "4e5cbdd70482aa99bfb296746154821a", "parents": 2, "children": 4, "duration": 0.4},
+    {"name": "scan.pdf", "status": "failed", "error": "parsing: PDF appears to be image-based: 0 extractable characters across 1 page(s), which is 0 per page (minimum 40). Such a file would need OCR, which is not supported."}
+  ]
+}
 ```
 
 ### 关键设计点

@@ -8,7 +8,8 @@ import uuid  # 引入唯一标识生成器。
 import pytest  # 引入测试框架。
 
 from rag_demo.config import load_settings  # 从 rag_demo.config 导入加载配置。
-from rag_demo.store.milvus_store import ChildUnit, MilvusStore, ParentUnit, normalise  # 从 rag_demo.store.milvus_store 引入本模块使用的类型和工具。
+from rag_demo.chunking.chunker import Child, Parent
+from rag_demo.store.milvus_store import MilvusStore, normalise  # 从 rag_demo.store.milvus_store 引入本模块使用的类型和工具。
 
 pytestmark = pytest.mark.integration  # 将pytestmark设为pytest.mark.integration。
 
@@ -66,8 +67,8 @@ def _vector(seed: float) -> list[float]:  # 生成供测试使用的确定性向
     return normalise([seed, seed + 1, seed + 2, seed + 3, seed + 4, seed + 5, seed + 6, seed + 7])  # 返回归一化的结果。
 
 
-def _child(doc_id: str, idx: int, seed: float = 1.0) -> ChildUnit:  # 定义子块的处理逻辑。
-    return ChildUnit(  # 返回子块记录的结果。
+def _child(doc_id: str, idx: int) -> Child:  # 定义子块的处理逻辑。
+    return Child(  # 返回子块记录的结果。
         id=f"{doc_id}_c{idx}",  # 传入标识参数。
         doc_id=doc_id,  # 传入文档标识参数。
         parent_id=f"{doc_id}_p{idx // 2}",  # 传入所属父块标识参数。
@@ -76,16 +77,16 @@ def _child(doc_id: str, idx: int, seed: float = 1.0) -> ChildUnit:  # 定义子�
         breadcrumb="doc > chapter",  # 传入标题路径参数。
         page=idx,  # 传入页码参数。
         source_name="doc.pdf",  # 传入来源文件名参数。
-        embedding=_vector(seed),  # 传入向量参数。
     )  # 结束当前多行表达式。
 
 
-def _parent(doc_id: str, idx: int) -> ParentUnit:  # 定义父块的处理逻辑。
-    return ParentUnit(  # 返回父块记录的结果。
+def _parent(doc_id: str, idx: int) -> Parent:  # 定义父块的处理逻辑。
+    return Parent(  # 返回父块记录的结果。
         parent_id=f"{doc_id}_p{idx}",  # 传入所属父块标识参数。
         doc_id=doc_id,  # 传入文档标识参数。
         text=f"parent text {idx}",  # 传入文本参数。
         breadcrumb="doc > chapter",  # 传入标题路径参数。
+        index=idx,
         page_start=idx,  # 传入起始页参数。
         source_name="doc.pdf",  # 传入来源文件名参数。
     )  # 结束当前多行表达式。
@@ -93,7 +94,7 @@ def _parent(doc_id: str, idx: int) -> ParentUnit:  # 定义父块的处理逻辑
 
 def test_inserted_rows_are_visible_immediately_without_flush(store):  # 验证强一致性使写入立即可见。
     """验证强一致性使写入立即可见。默认的有界一致性可能要等到刷新后才能查到记录。"""
-    store.insert_units([_child("d1", 0), _child("d1", 1)], [_parent("d1", 0)])  # 写入父子块。
+    store.insert_units([_child("d1", 0), _child("d1", 1)], [_parent("d1", 0)], [_vector(1.0)] * 2)  # 写入父子块。
     store.activate_document("d1")  # 激活文档。
 
     stats = store.collection_stats()  # 将统计信息设为统计集合记录的结果。
@@ -105,7 +106,7 @@ def test_inserted_rows_are_visible_immediately_without_flush(store):  # 验证�
 
 
 def test_inactive_rows_are_not_retrievable(store):  # 验证未激活记录不能被召回。
-    store.insert_units([_child("d2", 0)], [_parent("d2", 0)])  # 写入父子块。
+    store.insert_units([_child("d2", 0)], [_parent("d2", 0)], [_vector(1.0)])  # 写入父子块。
     # 保留未激活状态，模拟入库中途失败。
 
     assert store.search_children(_vector(1.0), limit=5) == []  # 确认检索子块的结果等于空列表。
@@ -113,7 +114,7 @@ def test_inactive_rows_are_not_retrievable(store):  # 验证未激活记录不�
 
 
 def test_activation_makes_document_retrievable(store):  # 验证激活后文档可以检索。
-    store.insert_units([_child("d3", 0)], [_parent("d3", 0)])  # 写入父子块。
+    store.insert_units([_child("d3", 0)], [_parent("d3", 0)], [_vector(1.0)])  # 写入父子块。
     assert store.search_children(_vector(1.0), limit=5) == []  # 确认检索子块的结果等于空列表。
 
     store.activate_document("d3")  # 激活文档。
@@ -122,7 +123,7 @@ def test_activation_makes_document_retrievable(store):  # 验证激活后文档�
 
 
 def test_deactivation_hides_document_again(store):  # 验证取消激活后文档被隐藏。
-    store.insert_units([_child("d4", 0)], [_parent("d4", 0)])  # 写入父子块。
+    store.insert_units([_child("d4", 0)], [_parent("d4", 0)], [_vector(1.0)])  # 写入父子块。
     store.activate_document("d4")  # 激活文档。
     assert len(store.search_children(_vector(1.0), limit=5)) == 1  # 确认检索子块的结果的数量等于1。
 
@@ -132,7 +133,7 @@ def test_deactivation_hides_document_again(store):  # 验证取消激活后文�
 
 
 def test_delete_removes_all_traces(store):  # 验证删除后无残留片段。
-    store.insert_units([_child("d5", 0), _child("d5", 1)], [_parent("d5", 0), _parent("d5", 1)])  # 写入父子块。
+    store.insert_units([_child("d5", 0), _child("d5", 1)], [_parent("d5", 0), _parent("d5", 1)], [_vector(1.0)] * 2)  # 写入父子块。
     store.activate_document("d5")  # 激活文档。
 
     store.delete_document("d5")  # 删除文档。
@@ -144,7 +145,7 @@ def test_delete_removes_all_traces(store):  # 验证删除后无残留片段。
 
 def test_fetch_parents_returns_requested_units(store):  # 验证按主键只返回所请求的父块。
     store.insert_units(  # 写入父子块。
-        [_child("d6", 0), _child("d6", 1)], [_parent("d6", 0), _parent("d6", 1)]  # 为父块提供输入。
+        [_child("d6", 0), _child("d6", 1)], [_parent("d6", 0), _parent("d6", 1)], [_vector(1.0)] * 2  # 为父块提供输入。
     )  # 结束当前多行表达式。
     store.activate_document("d6")  # 激活文档。
 
@@ -155,8 +156,8 @@ def test_fetch_parents_returns_requested_units(store):  # 验证按主键只返�
 
 
 def test_search_respects_doc_filter(store):  # 验证检索遵循文档过滤条件。
-    store.insert_units([_child("d7", 0)], [_parent("d7", 0)])  # 写入父子块。
-    store.insert_units([_child("d8", 0)], [_parent("d8", 0)])  # 写入父子块。
+    store.insert_units([_child("d7", 0)], [_parent("d7", 0)], [_vector(1.0)])  # 写入父子块。
+    store.insert_units([_child("d8", 0)], [_parent("d8", 0)], [_vector(1.0)])  # 写入父子块。
     store.activate_document("d7")  # 激活文档。
     store.activate_document("d8")  # 激活文档。
 
@@ -182,11 +183,11 @@ def test_meta_is_replaced_not_appended(store):  # 验证再次写入元数据会
 
 def test_reinserting_same_document_does_not_duplicate(store):  # 重复上传应替换旧文件，避免累积副本。
     """重复上传应替换旧文件，避免累积副本。"""
-    store.insert_units([_child("d9", 0)], [_parent("d9", 0)])  # 写入父子块。
+    store.insert_units([_child("d9", 0)], [_parent("d9", 0)], [_vector(1.0)])  # 写入父子块。
     store.activate_document("d9")  # 激活文档。
 
     store.delete_document("d9")  # 删除文档。
-    store.insert_units([_child("d9", 0)], [_parent("d9", 0)])  # 写入父子块。
+    store.insert_units([_child("d9", 0)], [_parent("d9", 0)], [_vector(1.0)])  # 写入父子块。
     store.activate_document("d9")  # 激活文档。
 
     assert len(store.search_children(_vector(1.0), limit=10)) == 1  # 确认检索子块的结果的数量等于1。

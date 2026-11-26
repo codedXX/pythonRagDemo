@@ -5,16 +5,20 @@ from __future__ import annotations  # 延后解析类型注解，允许引用尚
 import pymupdf  # 引入版面解析库。
 import pytest  # 引入测试框架。
 
-from rag_demo.config import ParsingSettings  # 从 rag_demo.config 导入解析配置。
-from rag_demo.parsers import (  # 从 rag_demo.parsers 引入本模块使用的类型和工具。
-    ScannedDocumentError,  # 导入缺少文本层异常。
-    UnsupportedDocumentError,  # 导入不支持的文档格式异常。
-    check_extension,  # 导入校验扩展名。
-    document_id,  # 导入文档标识。
-    parse_document,  # 导入解析文档。
-    sniff_extension,  # 导入识别真实文件类型。
-)  # 结束当前多行表达式。
-from rag_demo.parsers.base import supported_extensions_display  # 从 rag_demo.parsers.base 导入允许格式的提示文本。
+from unittest.mock import Mock
+
+from rag_demo.config import Settings
+from rag_demo.ingestion import IngestionError, IngestionPipeline
+from rag_demo.parsers.base import UnsupportedDocumentError, check_extension, document_id, supported_extensions_display
+
+
+@pytest.fixture
+def pipeline():
+    registry = Mock()
+    registry.find_by_name.return_value = []
+    embedder = Mock()
+    embedder.embed_texts.side_effect = lambda texts: [[3.0, 4.0] for _ in texts]
+    return IngestionPipeline(Settings(), Mock(), registry, embedder)
 
 
 @pytest.mark.parametrize("name", ["a.pdf", "b.md", "c.markdown", "D.PDF", "e.Md"])  # 用多组输入重复验证同一行为。
@@ -37,64 +41,41 @@ def test_rejection_message_lists_supported_types():  # 验证拒绝提示列出�
     assert supported_extensions_display() == ".markdown, .md, .pdf"  # 确认允许格式的提示文本的结果等于“.markdown, .md, .pdf”。
 
 
-def test_markdown_dispatch():  # 验证标记文档交给对应解析器。
-    document = parse_document(  # 将文档设为解析文档的结果。
-        "notes.md", "# Title\n\nSome body text here.\n".encode(), ParsingSettings()  # 传入带标题的文本文件和默认解析配置。
-    )  # 结束当前多行表达式。
-
-    assert document.metadata["format"] == "markdown"  # 确认文档的元数据中的format等于“markdown”。
-    assert not document.is_empty()  # 确认不满足“为空的结果”。
-
-
-def test_pdf_dispatch():  # 验证便携文档交给对应解析器。
-    pdf = pymupdf.open()  # 将便携文档设为打开文档的结果。
-    page = pdf.new_page()  # 将页码设为创建页面的结果。
-    page.insert_textbox(  # 写入文本框。
-        pymupdf.Rect(72, 72, 523, 770),  # 为Rect提供输入。
-        "A page of real text that is long enough to clear the density threshold.",  # 提供足以通过密度阈值的真实文本。
-        fontsize=11,  # 传入fontsize参数。
-    )  # 结束当前多行表达式。
-    content = pdf.tobytes()  # 将内容设为导出文档字节串的结果。
-    pdf.close()  # 关闭便携文档并释放资源。
-
-    document = parse_document("doc.pdf", content, ParsingSettings())  # 将文档设为解析文档的结果。
-
-    assert document.metadata["format"] == "pdf"  # 确认文档的元数据中的format等于“pdf”。
+def test_markdown_dispatch(pipeline):
+    pipeline.ingest("notes.md", b"# Title\n\nSome body text here.")
+    children, parents, vectors = pipeline.store.insert_units.call_args.args
+    assert children[0].breadcrumb == "Title"
+    assert children[0].parent_id == parents[0].parent_id
+    assert vectors == [[3.0, 4.0]]
 
 
-def test_empty_content_is_rejected():  # 验证拒绝空文件内容。
-    with pytest.raises(ValueError):  # 验证下方操作会抛出值错误。
-        parse_document("empty.md", b"", ParsingSettings())  # 解析文档。
+@pytest.mark.parametrize("name", ["doc.pdf", "fake.md"])
+def test_pdf_dispatch(pipeline, name):
+    with pymupdf.open() as pdf:
+        page = pdf.new_page()
+        page.insert_text((72, 72), "Real text content that clears the density threshold comfortably here.")
+        pipeline.ingest(name, pdf.tobytes())
+    children, _, _ = pipeline.store.insert_units.call_args.args
+    assert children[0].page == 1
+    assert "Real text content" in children[0].text
 
 
-def test_scanned_pdf_error_propagates_through_dispatch():  # 验证扫描件错误能传递给调用方。
-    pdf = pymupdf.open()  # 将便携文档设为打开文档的结果。
-    pdf.new_page()  # 创建页面。
-    content = pdf.tobytes()  # 将内容设为导出文档字节串的结果。
-    pdf.close()  # 关闭便携文档并释放资源。
-
-    with pytest.raises(ScannedDocumentError):  # 验证下方操作会抛出缺少文本层异常。
-        parse_document("scan.pdf", content, ParsingSettings())  # 解析文档。
+def test_empty_content_is_rejected(pipeline):
+    with pytest.raises(IngestionError, match="parsing: empty.md is empty"):
+        pipeline.ingest("empty.md", b"")
 
 
-def test_pdf_renamed_to_markdown_is_still_treated_as_pdf():  # 文件头优先于扩展名，以免将二进制内容误读为文字。
-    """文件头优先于扩展名，以免将二进制内容误读为文字。"""
-    pdf = pymupdf.open()  # 将便携文档设为打开文档的结果。
-    page = pdf.new_page()  # 将页码设为创建页面的结果。
-    page.insert_textbox(  # 写入文本框。
-        pymupdf.Rect(72, 72, 523, 770),  # 为Rect提供输入。
-        "Real text content that clears the density threshold comfortably here.",  # 构造改名后仍能作为有效便携文档解析的正文。
-        fontsize=11,  # 传入fontsize参数。
-    )  # 结束当前多行表达式。
-    content = pdf.tobytes()  # 将内容设为导出文档字节串的结果。
-    pdf.close()  # 关闭便携文档并释放资源。
-
-    assert sniff_extension("fake.md", content) == ".pdf"  # 确认识别真实文件类型的结果等于“.pdf”。
-    assert parse_document("fake.md", content, ParsingSettings()).metadata["format"] == "pdf"  # 确认元数据中的format等于“pdf”。
+def test_scanned_pdf_error_propagates_through_dispatch(pipeline):
+    with pymupdf.open() as pdf:
+        pdf.new_page()
+        with pytest.raises(IngestionError, match="OCR"):
+            pipeline.ingest("scan.pdf", pdf.tobytes())
+    pipeline.embedder.embed_texts.assert_not_called()
 
 
-def test_markdown_named_pdf_stays_markdown():  # 验证带便携文档后缀的标记文本保持文本类型。
-    assert sniff_extension("real.pdf", b"# Heading\n\ntext\n") == ".pdf"  # 确认识别真实文件类型的结果等于“.pdf”。
+def test_markdown_named_pdf_uses_pdf_parser(pipeline):
+    with pytest.raises(IngestionError, match="PDF"):
+        pipeline.ingest("real.pdf", b"# Heading")
 
 
 def test_document_id_is_stable_and_content_sensitive():  # 验证相同文件标识稳定且内容改变会产生新标识。

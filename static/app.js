@@ -7,7 +7,7 @@ const els = {  // 集中保存页面控件的引用。
   send: document.getElementById('send'),  // 取得发送按钮。
   dropzone: document.getElementById('dropzone'),  // 取得文件拖放区。
   fileInput: document.getElementById('file-input'),  // 取得文件选择器。
-  uploadList: document.getElementById('upload-list'),  // 取得上传进度列表。
+  uploadList: document.getElementById('upload-list'),  // 取得上传结果列表。
   docList: document.getElementById('doc-list'),  // 取得知识库文档列表。
   refreshDocs: document.getElementById('refresh-docs'),  // 取得刷新文档按钮。
   healthPanel: document.getElementById('health-panel'),  // 取得依赖状态面板。
@@ -247,98 +247,53 @@ async function removeDocument(doc, button) {  // 向服务端请求删除指定�
 
 els.refreshDocs.addEventListener('click', loadDocuments);  // 点击刷新按钮时重新载入文档。
 
-// 文件上传与进度反馈。
+async function uploadFiles(files) {
+  if (!files?.length) return;
+  const form = new FormData();
+  const pending = [];
+  for (const file of files) {
+    const row = el('li', 'upload-item');
+    const state = el('span', 'upload-state', '正在导入');
+    const detail = el('p', 'upload-detail');
+    const head = el('div', 'upload-item-head');
+    head.append(el('span', 'upload-name', file.name), state);
+    row.append(head, detail);
+    els.uploadList.append(row);
+    if (!/\.(pdf|md|markdown)$/i.test(file.name)) {
+      row.classList.add('failed');
+      state.textContent = '失败';
+      detail.textContent = '不支持此文件类型，请上传 PDF 或 Markdown（.md/.markdown）';
+      continue;
+    }
+    form.append('files', file);
+    pending.push({ row, state, detail });
+  }
+  if (!pending.length) return;
 
-function uploadRow(name) {  // 为单个待上传文件创建进度行。
-  const item = el('li', 'upload-item');  // 创建上传列表项。
-  item.dataset.filename = name;  // 保存此行关联的文件名。
-
-  const head = el('div', 'upload-item-head');  // 创建上传项标题行。
-  head.append(el('span', 'upload-name', name));  // 在标题中显示文件名。
-  head.append(el('span', 'upload-state', '等待中'));  // 显示初始等待状态。
-  item.append(head);  // 将标题行加入当前项目。
-
-  const track = el('div', 'progress-track');  // 创建进度条轨道。
-  const bar = el('div', 'progress-bar');  // 创建表示完成比例的色条。
-  track.append(bar);  // 将色条放进轨道。
-  item.append(track);  // 将进度条加入上传项。
-
-  const detail = el('p', 'upload-detail', '');  // 创建进度详情文本区域。
-  item.append(detail);  // 将详情区域加入上传项。
-
-  els.uploadList.append(item);  // 在页面上显示此上传项。
-  return { item, state: head.lastElementChild, bar, detail };  // 返回后续更新进度所需的元素引用。
-}  // 结束当前代码块。
-
-const STAGE_LABEL = {  // 把后端阶段值映射为中文提示。
-  parsing: '解析中',  // 显示文件解析阶段。
-  chunking: '分块中',  // 显示文档切块阶段。
-  embedding: '向量化中',  // 显示向量生成阶段。
-  persisting: '入库中',  // 显示存储写入阶段。
-  done: '完成',  // 显示成功状态。
-  failed: '失败',  // 显示失败状态。
-};  // 结束定义。
-
-async function uploadFiles(files) {  // 校验文件并批量上传，随后读取进度流。
-  if (!files || files.length === 0) return;  // 未选择文件时直接结束。
-
-  const allowed = [];  // 收集格式受支持的文件。
-  for (const file of files) {  // 逐个检查所选文件。
-    const ext = (file.name.split('.').pop() || '').toLowerCase();  // 提取扩展名并转成小写。
-    if (!['pdf', 'md', 'markdown'].includes(ext)) {  // 识别接口不支持的扩展名。
-      const row = uploadRow(file.name);  // 为此文件建立反馈行。
-      row.item.classList.add('failed');  // 应用失败样式。
-      row.state.textContent = '不支持';  // 标明格式不受支持。
-      row.detail.textContent = `不支持 .${ext}；请上传 PDF 或 Markdown（.md/.markdown）`;  // 提示可接受的文档格式。
-      continue;  // 当前项已处理，继续下一项。
-    }  // 结束当前代码块。
-    allowed.push(file);  // 将通过检查的文件加入上传批次。
-  }  // 结束当前代码块。
-  if (allowed.length === 0) return;  // 没有可上传的文件时结束。
-
-  const form = new FormData();  // 创建多文件表单。
-  for (const file of allowed) form.append('files', file);  // 将每个文件追加到同一表单字段。
-
-  const rows = new Map();  // 建立文件名与进度行的对应关系。
-  for (const file of allowed) rows.set(file.name, uploadRow(file.name));  // 为每个受支持的文件创建进度行。
-
-  try {  // 尝试执行本次操作。
-    const response = await fetch('/api/docs', { method: 'POST', body: form });  // 提交表单并等待上传事件流。
-    if (!response.ok || !response.body) {  // 检查响应是否成功且包含可读数据流。
-      throw new Error(`HTTP ${response.status}`);  // 抛出包含响应状态码的异常。
-    }  // 结束当前代码块。
-
-    const reader = response.body.getReader();  // 取得响应数据流的读取器。
-    const decoder = new TextDecoder();  // 创建支持跨数据块解码的文本解码器。
-    let buffer = '';  // 缓存尚未拼成完整事件的数据。
-
-    while (true) {  // 持续读取直至响应流结束。
-      const { done, value } = await reader.read();  // 取出下一批字节及结束标记。
-      if (done) break;  // 读到流末尾就退出。
-      buffer += decoder.decode(value, { stream: true });  // 保留解码状态并把新文本接到缓冲区。
-
-      // 每个完整推送事件以一个空行结束。
-      let boundary = buffer.indexOf('\n\n');  // 查找标记事件结尾的空行。
-      while (boundary !== -1) {  // 缓冲区含完整事件时逐帧处理。
-        const frame = buffer.slice(0, boundary);  // 取出分隔符之前的完整事件。
-        buffer = buffer.slice(boundary + 2);  // 从缓冲区移除已处理的事件及分隔符。
-        handleUploadEvent(frame, rows);  // 将完整上传事件交给对应的进度行。
-        boundary = buffer.indexOf('\n\n');  // 继续查找下一个完整事件。
-      }  // 结束当前代码块。
-    }  // 结束当前代码块。
-  } catch (error) {  // 处理操作过程中的异常。
-    for (const [name, row] of rows) {  // 逐个检查当前上传批次的进度行。
-      if (!row.item.classList.contains('done')) {  // 仅将尚未成功的文件标成失败。
-        row.item.classList.add('failed');  // 应用失败样式。
-        row.state.textContent = '失败';  // 更新状态文字。
-        row.detail.textContent = `请求失败：${error.message}`;  // 在进度行展示请求失败的原因。
-      }  // 结束当前代码块。
-    }  // 结束当前代码块。
-  } finally {  // 无论请求成功或失败都执行收尾操作。
-    await loadDocuments();  // 重新读取知识库列表。
-    await loadHealth();  // 刷新依赖状态。
-  }  // 结束当前代码块。
-}  // 结束当前代码块。
+  try {
+    const response = await fetch('/api/docs', { method: 'POST', body: form });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { results } = await response.json();
+    for (const [index, { row, state, detail }] of pending.entries()) {
+      const result = results[index];
+      const ok = result.status === 'ok';
+      row.classList.add(ok ? 'done' : 'failed');
+      state.textContent = ok ? '可提问' : '失败';
+      detail.textContent = ok
+        ? `${result.parents} 段 / ${result.children} 块，用时 ${result.duration}s`
+        : result.error;
+    }
+  } catch (error) {
+    for (const { row, state, detail } of pending) {
+      row.classList.add('failed');
+      state.textContent = '失败';
+      detail.textContent = `请求失败：${error.message}`;
+    }
+  } finally {
+    await loadDocuments();
+    await loadHealth();
+  }
+}
 
 function parseFrame(frame) {  // 拆解服务端推送的单个事件。
   let event = 'message';  // 未声明事件名时使用默认名称。
@@ -352,40 +307,6 @@ function parseFrame(frame) {  // 拆解服务端推送的单个事件。
     return { event, data: JSON.parse(dataLines.join('\n')) };  // 拼接载荷并解析其结构化数据。
   } catch {  // 处理无需取用异常对象的失败。
     return null;  // 忽略无法解析的事件。
-  }  // 结束当前代码块。
-}  // 结束当前代码块。
-
-function handleUploadEvent(frame, rows) {  // 根据上传事件更新对应文件的界面。
-  const parsed = parseFrame(frame);  // 解析当前帧。
-  if (!parsed) return;  // 忽略无有效数据的帧。
-  const { event, data } = parsed;  // 取出事件名和载荷。
-  const row = rows.get(data.name);  // 用文件名找到对应进度行。
-  if (!row) return;  // 忽略不属于当前批次的事件。
-
-  if (event === 'progress') {  // 处理进度通知。
-    const label = STAGE_LABEL[data.stage] || data.stage;  // 优先显示中文阶段名，未知阶段使用原值。
-    row.state.textContent = label;  // 更新当前处理阶段。
-    if (typeof data.fraction === 'number') {  // 存在数值进度时更新进度条。
-      row.bar.style.width = `${Math.round(data.fraction * 100)}%`;  // 将完成比例转成整数百分比。
-    }  // 结束当前代码块。
-    row.detail.textContent = data.message || '';  // 显示服务端给出的阶段说明。
-    if (data.stage === 'embedding' && data.total) {  // 向量阶段有总数时按实际处理条数计算。
-      row.bar.style.width = `${Math.round((data.current / data.total) * 100)}%`;  // 根据已完成和总条数计算进度条宽度。
-    }  // 结束当前代码块。
-  } else if (event === 'done') {  // 处理正常结束通知。
-    row.item.classList.remove('failed');  // 清除旧的失败样式。
-    row.item.classList.add('done');  // 应用完成样式。
-    row.bar.style.width = '100%';  // 填满进度条。
-    row.state.textContent = '完成';  // 显示完成状态。
-    row.detail.textContent = `${data.parents} 段 / ${data.children} 块，用时 ${data.duration}s`;  // 显示切分统计和耗时。
-  } else if (event === 'failed') {  // 处理入库失败通知。
-    row.item.classList.add('failed');  // 应用失败样式。
-    row.state.textContent = '失败';  // 更新状态文字。
-    row.detail.textContent = `${STAGE_LABEL[data.stage] || data.stage}：${data.error}`;  // 同时显示失败阶段与原因。
-  } else if (event === 'rejected') {  // 处理上传被拒绝的通知。
-    row.item.classList.add('failed');  // 应用失败样式。
-    row.state.textContent = '拒绝';  // 显示拒绝状态。
-    row.detail.textContent = data.error;  // 显示服务端给出的拒绝原因。
   }  // 结束当前代码块。
 }  // 结束当前代码块。
 

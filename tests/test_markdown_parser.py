@@ -3,11 +3,11 @@
 from __future__ import annotations  # 延后解析类型注解，允许引用尚未定义的类型。
 
 from rag_demo.parsers.base import SegmentKind  # 从 rag_demo.parsers.base 导入片段类型。
-from rag_demo.parsers.markdown import MarkdownParser  # 从 rag_demo.parsers.markdown 导入标记文本解析器。
+from rag_demo.parsers.markdown import parse_markdown  # 从 rag_demo.parsers.markdown 导入标记文本解析器。
 
 
 def _parse(text: str):  # 定义解析响应的处理逻辑。
-    return MarkdownParser().parse_text(text)  # 返回parse_text的结果。
+    return parse_markdown("test.md", text.encode()).segments  # 返回parse_text的结果。
 
 
 def test_heading_path_is_tracked_through_nesting():  # 验证嵌套标题能正确扩展路径。
@@ -116,7 +116,7 @@ def test_breadcrumb_property_joins_path():  # 验证位置提示按顺序连接�
 
 
 def test_parse_handles_bytes_and_reports_metadata():  # 验证字节输入可解析且生成元数据。
-    document = MarkdownParser().parse("notes.md", "# T\n\nbody\n".encode())  # 将文档设为解析的结果。
+    document = parse_markdown("notes.md", "# T\n\nbody\n".encode())  # 将文档设为解析的结果。
 
     assert document.name == "notes.md"  # 确认名称等于“notes.md”。
     assert document.page_count == 1  # 确认总页数等于1。
@@ -126,4 +126,4 @@ def test_parse_handles_bytes_and_reports_metadata():  # 验证字节输入可解
 
 
 def test_empty_document_is_reported_empty():  # 验证空文档被识别为空。
-    assert MarkdownParser().parse("empty.md", b"").is_empty()  # 确认为空的结果。
+    assert parse_markdown("empty.md", b"").is_empty()  # 确认为空的结果。

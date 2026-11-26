@@ -1,14 +1,11 @@
 """提供问答、文档管理和依赖检查接口。
 
-问答流先发送来源，方便用户在等待首段回答时查看命中的文档。上传接口按文件推送处理进度，健康接口返回各依赖的状态。响应中应避免包含供应商凭据和上游地址。"""
+问答流先发送来源，方便用户在等待首段回答时查看命中的文档。上传接口按提交顺序返回导入结果，健康接口返回各依赖的状态。响应中应避免包含供应商凭据和上游地址。"""
 
 from __future__ import annotations  # 延后解析类型注解，允许引用尚未定义的类型。
 
 import json  # 引入结构化数据的编解码工具。
 import logging  # 引入日志模块。
-import queue as queue_module  # 引入队列。
-import threading  # 引入线程工具。
-import uuid  # 引入唯一标识生成器。
 from typing import Any  # 从 typing 导入任意类型。
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile  # 从 fastapi 引入本模块使用的类型和工具。
@@ -17,8 +14,6 @@ from fastapi.responses import StreamingResponse  # 从 fastapi.responses 导入�
 from rag_demo.api.services import Services, iter_sse  # 从 rag_demo.api.services 引入本模块使用的类型和工具。
 from rag_demo.errors import ProviderError  # 从 rag_demo.errors 导入供应商异常。
 from rag_demo.generation.answer import NO_CONTEXT_ANSWER, describe_generation_error  # 从 rag_demo.generation.answer 引入本模块使用的类型和工具。
-from rag_demo.ingestion import IngestionError, Stage  # 从 rag_demo.ingestion 引入本模块使用的类型和工具。
-from rag_demo.parsers.base import supported_extensions_display  # 从 rag_demo.parsers.base 导入允许格式的提示文本。
 from rag_demo.retrieval.hybrid import Context  # 从 rag_demo.retrieval.hybrid 导入引用上下文。
 
 logger = logging.getLogger(__name__)  # 将日志记录器设为获取当前模块的日志记录器的结果。
@@ -97,105 +92,37 @@ def delete_document(doc_id: str, request: Request) -> dict[str, Any]:  # 定义�
 
 
 @router.post("/api/docs")  # 把下方处理函数绑定到 POST 路由。
-async def upload_documents(request: Request, files: list[UploadFile] = File(...)):  # 接收上传文档，并逐个推送处理进度。
-    """接收上传文档，并逐个推送处理进度。"""
-    services = _services(request)  # 将服务组件设为共享服务的结果。
+def upload_documents(request: Request, files: list[UploadFile] = File(...)):
+    """按提交顺序导入文件，每份文件返回一个最终结果。"""
+    services = request.app.state.services
+    max_mb = services.settings.storage.max_upload_mb
+    limit = max_mb * 1024 * 1024
+    results = []
+    for upload in files:
+        name = upload.filename or "unnamed"
+        try:
+            content = upload.file.read(limit + 1)
+            if len(content) > limit:
+                raise ValueError(f"file exceeds the {max_mb} MB limit")
+            services.ensure_collections()
+            result = services.pipeline.ingest(name, content)
+        except Exception as error:
+            results.append({"name": name, "status": "failed", "error": str(error)})
+            continue
 
-    accepted: list[tuple[str, bytes]] = []  # 初始化已接受的文件为空列表。
-    rejected: list[dict[str, str]] = []  # 初始化被拒绝的文件为空列表。
-    limit = services.settings.storage.max_upload_mb * 1024 * 1024  # 把配置的兆字节上限换算为字节数。
-
-    for upload in files:  # 遍历文件列表，逐项取得upload。
-        name = upload.filename or "unnamed"  # 将名称设为文件名或“unnamed”。
-        content = await upload.read()  # 异步读出当前上传文件的原始字节。
-        if len(content) > limit:  # 超出单文件上限时在入库前拒绝。
-            rejected.append(  # 将字段映射加入被拒绝的文件。
-                {  # 开始构造字段映射。
-                    "name": name,  # 填入名称字段。
-                    "error": f"file exceeds the {services.settings.storage.max_upload_mb} MB limit",  # 填入错误字段。
-                }  # 结束本组字段。
-            )  # 结束当前多行表达式。
-            continue  # 跳过本项，继续处理下一项。
-        accepted.append((name, content))  # 同时保留已接受文件的名称和内容。
-
-    def stream():  # 定义数据流的处理逻辑。
-        for item in rejected:  # 遍历被拒绝的文件，逐项取得条目。
-            yield _sse("rejected", item)  # 向客户端推送“rejected”事件。
-
-        for name, content in accepted:  # 遍历已接受的文件，逐项取得名称、内容。
-            # 提前确定文档标识，让客户端能把后续进度关联到同一个文件。
-            job_id = uuid.uuid4().hex[:12]  # 截取随机标识的前十二位作为本次文件任务号。
-            yield _sse("start", {"name": name, "job": job_id})  # 向客户端推送“start”事件。
-
-            # 在工作线程执行入库，同时从队列读取进度；等入库返回才读队列会使所有进度同时到达。
-            events: queue_module.Queue = queue_module.Queue()  # 用线程安全队列把入库进度交给响应生成器。
-            outcome: dict[str, Any] = {}  # 在工作线程和推送逻辑之间共享最终结果。
-
-            def on_progress(progress, job=job_id, filename=name):  # 把本次任务号和文件名绑定到进度回调。
-                payload = progress.as_dict()  # 将载荷设为进度的字典表示。
-                payload.update({"name": filename, "job": job})  # 将进度与客户端对应的上传项关联。
-                events.put(("progress", payload))  # 把进度通知放入事件队列供立即转发。
-
-            def worker(filename=name, payload=content):  # 为当前文件绑定参数，在后台线程执行入库。
-                try:  # 在此捕获后续操作可能产生的异常。
-                    services.ensure_collections()
-                    outcome["result"] = services.pipeline.ingest(  # 保存正常完成的入库结果。
-                        filename, payload, on_progress=on_progress  # 将文件名、原始字节及实时进度回调传给入库流程。
-                    )  # 结束当前多行表达式。
-                except IngestionError as error:  # 捕获入库异常。
-                    outcome["error"] = {  # 将处理结果中的错误设为字段映射。
-                        "stage": error.stage.value,  # 填入阶段字段。
-                        "error": error.message,  # 填入错误字段。
-                    }  # 结束本组字段。
-                except Exception as error:  # 捕获通用异常。
-                    outcome["error"] = {  # 将处理结果中的错误设为字段映射。
-                        "stage": Stage.PERSISTING.value,  # 填入阶段字段。
-                        "error": str(error),  # 填入错误字段。
-                    }  # 结束本组字段。
-                finally:  # 无论前面是否成功，都执行收尾操作。
-                    events.put(("finished", None))  # 用完成标记通知读取方退出队列循环。
-
-            thread = threading.Thread(target=worker, daemon=True)  # 创建随进程退出的入库工作线程。
-            thread.start()  # 启动线程，使主响应能同步推送进度。
-
-            while True:  # 持续处理，直到循环内的退出条件成立。
-                kind, payload = events.get()  # 等待工作线程的下一条通知并拆出类型和载荷。
-                if kind == "finished":  # 收到内部完成标记时停止等待进度。
-                    break  # 结束当前循环。
-                yield _sse(kind, payload)  # 向客户端推送类别事件。
-
-            if "error" in outcome:  # 当“error”包含在处理结果时进入此分支。
-                yield _sse(  # 向客户端推送“failed”事件。
-                    "failed",  # 使用文件入库失败的事件名。
-                    {"name": name, "job": job_id, **outcome["error"]},  # 把文件、任务号与失败阶段和原因一起发送。
-                )  # 结束当前多行表达式。
-                continue  # 跳过本项，继续处理下一项。
-
-            result = outcome["result"]  # 将结果设为处理结果中的结果。
-            try:  # 在此捕获后续操作可能产生的异常。
-                services.refresh_lexical_index()  # 刷新关键词索引。
-            except Exception as error:  # pragma: no cover  # 防御性处理。
-                logger.warning("lexical index refresh failed: %s", error)  # 记录警告。
-
-            yield _sse(  # 向客户端推送“done”事件。
-                "done",  # 使用单份文档入库完成的事件名。
-                {  # 开始构造字段映射。
-                    "name": name,  # 填入名称字段。
-                    "job": job_id,  # 填入任务标识字段。
-                    "doc_id": result.doc_id,  # 填入文档标识字段。
-                    "parents": result.parent_count,  # 填入父块列表字段。
-                    "children": result.child_count,  # 填入子块列表字段。
-                    "duration": round(result.duration_seconds, 2),  # 填入耗时字段。
-                },  # 结束本组字段。
-            )  # 结束当前多行表达式。
-
-        yield _sse("complete", {"accepted": len(accepted), "rejected": len(rejected)})  # 批次结束时同时报告接收和拒绝的文件数。
-
-    return StreamingResponse(  # 返回流式响应的结果。
-        stream(),  # 把逐条产生的事件帧作为响应正文。
-        media_type="text/event-stream",  # 传入响应内容类型参数。
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},  # 禁用缓存和代理缓冲，让事件能及时到达客户端。
-    )  # 结束当前多行表达式。
+        try:
+            services.refresh_lexical_index()
+        except Exception as error:
+            logger.warning("lexical index refresh failed: %s", error)
+        results.append({
+            "name": name,
+            "status": "ok",
+            "doc_id": result.doc_id,
+            "parents": result.parent_count,
+            "children": result.child_count,
+            "duration": round(result.duration_seconds, 2),
+        })
+    return {"results": results}
 
 
 @router.post("/api/chat")  # 把下方处理函数绑定到 POST 路由。

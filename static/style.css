@@ -90,7 +90,7 @@ html, body {  /* 设置整页的基础排版。 */
 
 .upload-list:empty { margin: 0; }  /* 空上传列表无需占用额外空间。 */
 
-.upload-item {  /* 设置单项上传进度卡片。 */
+.upload-item {  /* 设置单份文件的导入结果。 */
   padding: 8px 10px;  /* 设置内边距。 */
   background: var(--panel-2);  /* 设置背景。 */
   border-radius: 8px;  /* 设置圆角半径。 */
@@ -109,24 +109,6 @@ html, body {  /* 设置整页的基础排版。 */
 .upload-state { font-size: 11px; color: var(--muted); white-space: nowrap; }  /* 用小字号显示上传状态。 */
 .upload-item.failed .upload-state { color: var(--bad); }  /* 失败状态使用错误色。 */
 .upload-item.done .upload-state { color: var(--ok); }  /* 完成状态使用成功色。 */
-
-.progress-track {  /* 绘制进度条轨道。 */
-  height: 4px;  /* 设置高度。 */
-  background: var(--line);  /* 设置背景。 */
-  border-radius: 2px;  /* 设置圆角半径。 */
-  margin-top: 7px;  /* 设置上边距。 */
-  overflow: hidden;  /* 裁去超出容器边界的内容。 */
-}  /* 结束该组样式。 */
-
-.progress-bar {  /* 用宽度反映上传进度。 */
-  height: 100%;  /* 设置高度。 */
-  width: 0;  /* 设置宽度。 */
-  background: var(--accent);  /* 设置背景。 */
-  transition: width 0.25s ease;  /* 设置状态切换动画。 */
-}  /* 结束该组样式。 */
-
-.upload-item.failed .progress-bar { background: var(--bad); }  /* 失败时将进度条标红。 */
-.upload-item.done .progress-bar { background: var(--ok); }  /* 完成时将进度条标绿。 */
 
 .upload-detail {  /* 设置上传详情的间距与换行。 */
   margin: 6px 0 0;  /* 设置外边距。 */

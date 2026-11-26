@@ -7,7 +7,6 @@ import threading  # 引入线程工具。
 from collections.abc import Iterator  # 从 collections.abc 导入Iterator。
 from dataclasses import dataclass, field  # 从 dataclasses 引入本模块使用的类型和工具。
 
-from rag_demo.chunking.chunker import Chunker  # 从 rag_demo.chunking.chunker 导入分块器。
 from rag_demo.config import Settings  # 从 rag_demo.config 导入项目配置。
 from rag_demo.embedding.provider import Embedder  # 从 rag_demo.embedding.provider 导入向量编码器。
 from rag_demo.embedding.rerank import Reranker  # 从 rag_demo.embedding.rerank 导入重排服务。
@@ -96,9 +95,7 @@ def build_services(settings: Settings) -> Services:  # 根据配置连接各项�
 
     retriever = HybridRetriever(settings.retrieval, store, embedder, lexical, reranker)  # 把两路召回和重排服务组合成混合检索器。
     answerer = Answerer(settings, generator)  # 让问答服务复用同一生成客户端。
-    pipeline = IngestionPipeline(  # 将入库流程设为入库流程的结果。
-        settings, store, registry, embedder, Chunker(settings.chunking, embedder=embedder)  # 入库和语义切分共用向量服务，结果写入同一存储和登记表。
-    )  # 结束当前多行表达式。
+    pipeline = IngestionPipeline(settings, store, registry, embedder)
 
     return Services(  # 返回应用服务集合的结果。
         settings=settings,  # 传入配置参数。
