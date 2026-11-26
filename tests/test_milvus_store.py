@@ -8,7 +8,7 @@ import uuid  # 引入唯一标识生成器。
 import pytest  # 引入测试框架。
 
 from rag_demo.config import load_settings  # 从 rag_demo.config 导入加载配置。
-from rag_demo.chunking.chunker import Child, Parent
+from rag_demo.chunking.chunker import Child, Parent  # 引入构造存储测试数据使用的父子块类型。
 from rag_demo.store.milvus_store import MilvusStore, normalise  # 从 rag_demo.store.milvus_store 引入本模块使用的类型和工具。
 
 pytestmark = pytest.mark.integration  # 将pytestmark设为pytest.mark.integration。
@@ -86,7 +86,7 @@ def _parent(doc_id: str, idx: int) -> Parent:  # 定义父块的处理逻辑。
         doc_id=doc_id,  # 传入文档标识参数。
         text=f"parent text {idx}",  # 传入文本参数。
         breadcrumb="doc > chapter",  # 传入标题路径参数。
-        index=idx,
+        index=idx,  # 保存该父块在测试文档中的序号。
         page_start=idx,  # 传入起始页参数。
         source_name="doc.pdf",  # 传入来源文件名参数。
     )  # 结束当前多行表达式。

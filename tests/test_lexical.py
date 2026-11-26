@@ -165,27 +165,27 @@ class TestRRF:  # 定义 TestRRF 类型。
         # 单个通道对同一候选只按最高名次计分一次。
         assert fused["a"] == pytest.approx(1 / 61)  # 确认融合结果中的a等于approx的结果。
 
-def test_fusion_ranks_and_partial_rerank_preserve_unscored_candidates():
-    from unittest.mock import Mock
-    from rag_demo.config import RetrievalSettings
-    from rag_demo.embedding.rerank import RerankResult
-    from rag_demo.retrieval.hybrid import Candidate, HybridRetriever
+def test_fusion_ranks_and_partial_rerank_preserve_unscored_candidates():  # 验证融合名次和重排仅返回部分分数时的候选保留顺序。
+    from unittest.mock import Mock  # 用替身指定重排服务的响应。
+    from rag_demo.config import RetrievalSettings  # 使用检索配置的默认融合参数。
+    from rag_demo.embedding.rerank import RerankResult  # 构造带输入位置和分数的重排结果。
+    from rag_demo.retrieval.hybrid import Candidate, HybridRetriever  # 引入候选类型及融合、重排逻辑。
 
-    def candidate(identifier, **ranks):
-        return Candidate(identifier, "parent", "text", "", 1, "source", **ranks)
+    def candidate(identifier, **ranks):  # 为不同召回路径构造最小候选样本。
+        return Candidate(identifier, "parent", "text", "", 1, "source", **ranks)  # 固定正文与来源，仅按用例指定标识和名次。
 
-    settings = RetrievalSettings()
-    reranker = Mock()
-    retriever = HybridRetriever(settings, None, None, None, reranker)
-    fused = retriever._fuse(
-        [candidate("shared", dense_rank=0), candidate("a", dense_rank=1)],
-        [candidate("shared", sparse_rank=0), candidate("b", sparse_rank=1)],
-    )
-    assert [(c.id, c.dense_rank, c.sparse_rank, c.fused_rank) for c in fused] == [
-        ("shared", 0, 0, 0), ("a", 1, None, 1), ("b", None, 1, 2)
-    ]
-    assert [c.fused_score for c in fused] == pytest.approx([2/61, 1/62, 1/62])
-    reranker.rerank.return_value = [RerankResult(index=2, score=0.9)]
-    result, applied, error = retriever._rerank("query", fused)
-    assert applied and error is None
-    assert [(c.id, c.rerank_rank) for c in result] == [("b", 0), ("shared", None), ("a", None)]
+    settings = RetrievalSettings()  # 创建本用例的检索配置。
+    reranker = Mock()  # 以替身控制哪些候选获得重排分数。
+    retriever = HybridRetriever(settings, None, None, None, reranker)  # 构造仅用于测试融合与重排的检索器。
+    fused = retriever._fuse(  # 将两路召回的排名送入融合。
+        [candidate("shared", dense_rank=0), candidate("a", dense_rank=1)],  # 稠密通道包含共同命中项和独有项 a。
+        [candidate("shared", sparse_rank=0), candidate("b", sparse_rank=1)],  # 稀疏通道包含共同命中项和独有项 b。
+    )  # 取得融合候选列表。
+    assert [(c.id, c.dense_rank, c.sparse_rank, c.fused_rank) for c in fused] == [  # 同时核对两路原始名次和融合后的名次。
+        ("shared", 0, 0, 0), ("a", 1, None, 1), ("b", None, 1, 2)  # 共同命中项排首位，两路独有项保留各自名次。
+    ]  # 完成融合位置的核对。
+    assert [c.fused_score for c in fused] == pytest.approx([2/61, 1/62, 1/62])  # 按倒数排名融合公式检查每个候选的得分。
+    reranker.rerank.return_value = [RerankResult(index=2, score=0.9)]  # 让重排服务只给第三个候选打分。
+    result, applied, error = retriever._rerank("query", fused)  # 执行部分重排并取出结果及状态。
+    assert applied and error is None  # 确认部分结果仍视为重排成功。
+    assert [(c.id, c.rerank_rank) for c in result] == [("b", 0), ("shared", None), ("a", None)]  # 确认有分数的 b 前移，未评分项保留原有相对顺序。

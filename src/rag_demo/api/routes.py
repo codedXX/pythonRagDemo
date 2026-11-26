@@ -92,37 +92,37 @@ def delete_document(doc_id: str, request: Request) -> dict[str, Any]:  # 定义�
 
 
 @router.post("/api/docs")  # 把下方处理函数绑定到 POST 路由。
-def upload_documents(request: Request, files: list[UploadFile] = File(...)):
+def upload_documents(request: Request, files: list[UploadFile] = File(...)):  # 接收同一表单中的多个文件并按提交顺序返回结果。
     """按提交顺序导入文件，每份文件返回一个最终结果。"""
-    services = request.app.state.services
-    max_mb = services.settings.storage.max_upload_mb
-    limit = max_mb * 1024 * 1024
-    results = []
-    for upload in files:
-        name = upload.filename or "unnamed"
-        try:
-            content = upload.file.read(limit + 1)
-            if len(content) > limit:
-                raise ValueError(f"file exceeds the {max_mb} MB limit")
-            services.ensure_collections()
-            result = services.pipeline.ingest(name, content)
-        except Exception as error:
-            results.append({"name": name, "status": "failed", "error": str(error)})
-            continue
+    services = request.app.state.services  # 从当前应用取得入库服务。
+    max_mb = services.settings.storage.max_upload_mb  # 读取单个文件允许上传的大小，单位为 MB。
+    limit = max_mb * 1024 * 1024  # 换算为字节，与读取到的内容长度比较。
+    results = []  # 按上传顺序收集每个文件的处理结果。
+    for upload in files:  # 逐个导入表单中的文件。
+        name = upload.filename or "unnamed"  # 保留文件名供入库与前端展示，缺省时使用占位名。
+        try:  # 单独处理每个文件的读取和导入错误。
+            content = upload.file.read(limit + 1)  # 多读一个字节即可识别超限文件。
+            if len(content) > limit:  # 检查文件是否超过配置上限。
+                raise ValueError(f"file exceeds the {max_mb} MB limit")  # 在错误信息中给出允许的最大大小。
+            services.ensure_collections()  # 在写入前确认存储集合已就绪。
+            result = services.pipeline.ingest(name, content)  # 将文件内容交给解析与入库流程。
+        except Exception as error:  # 将单个文件的失败转成对应的结果项。
+            results.append({"name": name, "status": "failed", "error": str(error)})  # 保留文件名和具体错误供前端显示。
+            continue  # 继续处理本批次其余文件。
 
-        try:
-            services.refresh_lexical_index()
-        except Exception as error:
-            logger.warning("lexical index refresh failed: %s", error)
-        results.append({
-            "name": name,
-            "status": "ok",
-            "doc_id": result.doc_id,
-            "parents": result.parent_count,
-            "children": result.child_count,
-            "duration": round(result.duration_seconds, 2),
-        })
-    return {"results": results}
+        try:  # 成功入库后尝试更新关键词召回数据。
+            services.refresh_lexical_index()  # 用最新可用片段重建关键词索引。
+        except Exception as error:  # 单独处理索引刷新失败。
+            logger.warning("lexical index refresh failed: %s", error)  # 记录刷新失败原因供排查。
+        results.append({  # 按接口格式组装该文件的成功结果。
+            "name": name,  # 返回原始文件名。
+            "status": "ok",  # 标明该文件已成功导入。
+            "doc_id": result.doc_id,  # 返回登记表中的文档标识。
+            "parents": result.parent_count,  # 返回用作上下文的父块数量。
+            "children": result.child_count,  # 返回用于检索的子块数量。
+            "duration": round(result.duration_seconds, 2),  # 以秒为单位返回耗时并保留两位小数。
+        })  # 把成功结果追加到本批次列表。
+    return {"results": results}  # 一次返回与上传文件顺序对应的全部结果。
 
 
 @router.post("/api/chat")  # 把下方处理函数绑定到 POST 路由。

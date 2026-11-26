@@ -11,7 +11,7 @@ from rag_demo.embedding.rerank import RerankResult  # 从 rag_demo.embedding.rer
 from rag_demo.errors import TransientFailure  # 从 rag_demo.errors 导入暂时性故障。
 from rag_demo.retrieval.hybrid import Context, HybridRetriever  # 从 rag_demo.retrieval.hybrid 引入本模块使用的类型和工具。
 from rag_demo.retrieval.lexical import LexicalIndex  # 从 rag_demo.retrieval.lexical 导入关键词索引。
-from rag_demo.chunking.chunker import Child, Parent
+from rag_demo.chunking.chunker import Child, Parent  # 引入供检索集成测试写入的父子块类型。
 from rag_demo.store.milvus_store import MilvusStore, normalise  # 从 rag_demo.store.milvus_store 引入本模块使用的类型和工具。
 
 pytestmark = pytest.mark.integration  # 将pytestmark设为pytest.mark.integration。
@@ -107,7 +107,7 @@ def _populate(store, doc_id: str, parents: dict[str, tuple[str, str]], children_
                 doc_id=doc_id,  # 传入文档标识参数。
                 text=parent_text,  # 传入文本参数。
                 breadcrumb=breadcrumb,  # 传入标题路径参数。
-                index=index,
+                index=index,  # 保留父块在样本文档中的序号。
                 page_start=index + 1,  # 传入起始页参数。
                 source_name=f"{doc_id}.pdf",  # 传入来源文件名参数。
             )  # 结束当前多行表达式。
@@ -126,7 +126,7 @@ def _populate(store, doc_id: str, parents: dict[str, tuple[str, str]], children_
                     source_name=f"{doc_id}.pdf",  # 传入来源文件名参数。
                 )  # 结束当前多行表达式。
             )  # 结束当前多行表达式。
-    vectors = [_vector(sum(ord(c) for c in child.text) % 50) for child in child_units]
+    vectors = [_vector(sum(ord(c) for c in child.text) % 50) for child in child_units]  # 从每个子块文字派生可重复的测试向量。
     store.insert_units(child_units, parent_units, vectors)  # 写入父子块。
     store.activate_document(doc_id)  # 激活文档。
 
@@ -187,12 +187,12 @@ class TestRecall:  # 定义 TestRecall 类型。
                     doc_id="d2",  # 传入文档标识参数。
                     text="inactive content here",  # 传入文本参数。
                     breadcrumb="ch1",  # 传入标题路径参数。
-                    index=0,
+                    index=0,  # 将样本父块标记为文档中的首块。
                     page_start=1,  # 传入起始页参数。
                     source_name="d2.pdf",  # 传入来源文件名参数。
                 )  # 结束当前多行表达式。
             ],  # 结束列表。
-            [_vector(9)],
+            [_vector(9)],  # 提供与该子块一一对应的测试向量。
         )  # 结束当前多行表达式。
         retriever = _retriever(settings, store)  # 将检索器设为检索器的结果。
 

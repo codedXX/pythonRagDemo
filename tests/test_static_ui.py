@@ -57,10 +57,10 @@ def test_script_handles_every_chat_event(script):  # 每种推送事件都应有
         assert f"'{event}'" in script, f"unhandled chat event: {event}"  # 确认格式化文本包含在页面脚本。
 
 
-def test_upload_reads_final_results(script, styles):
-    assert "const { results } = await response.json()" in script
-    assert "正在导入" in script and "可提问" in script
-    assert "progress-bar" not in styles
+def test_upload_reads_final_results(script, styles):  # 验证上传界面读取批次的最终结果并展示文件状态。
+    assert "const { results } = await response.json()" in script  # 确认脚本从 JSON 响应中取出逐文件结果。
+    assert "正在导入" in script and "可提问" in script  # 确认界面提供等待导入与完成后可提问的状态。
+    assert "progress-bar" not in styles  # 确认样式中没有旧的上传进度条。
 
 
 def test_no_secrets_or_upstream_endpoints_are_referenced(script, html, styles):  # 验证静态资源隐藏供应商地址和凭据。

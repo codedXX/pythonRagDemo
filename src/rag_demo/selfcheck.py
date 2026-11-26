@@ -6,7 +6,7 @@ import json  # 引入结构化数据的编解码工具。
 from dataclasses import dataclass, field  # 从 dataclasses 引入本模块使用的类型和工具。
 from enum import Enum  # 从 enum 导入枚举。
 from pathlib import Path  # 从 pathlib 导入路径对象。
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING  # 区分类型检查时与运行时需要的导入。
 
 from rag_demo.config import Settings, missing_secrets  # 从 rag_demo.config 引入本模块使用的类型和工具。
 from rag_demo.embedding.provider import Embedder  # 从 rag_demo.embedding.provider 导入向量编码器。
@@ -20,8 +20,8 @@ from rag_demo.errors import (  # 从 rag_demo.errors 引入本模块使用的类
 )  # 结束当前多行表达式。
 from rag_demo.generation.llm import Generator  # 从 rag_demo.generation.llm 导入生成客户端。
 
-if TYPE_CHECKING:
-    from rag_demo.store.milvus_store import MilvusStore
+if TYPE_CHECKING:  # 仅为静态类型检查提供向量库类型。
+    from rag_demo.store.milvus_store import MilvusStore  # 让存储参数的注解能引用 MilvusStore。
 
 
 class Status(str, Enum):  # 定义 Status 类型。
@@ -206,40 +206,40 @@ def check_milvus(settings: Settings) -> DependencyReport:  # 检查向量数据�
     )  # 结束当前多行表达式。
 
 
-def check_stored_dimension(
-    settings: Settings,
-    dimension: int,
-    *,
-    store: MilvusStore | None = None,
-    record_if_missing: bool = False,
-) -> DependencyReport:
+def check_stored_dimension(  # 核对库中登记的模型和向量维度。
+    settings: Settings,  # 提供当前模型和存储连接配置。
+    dimension: int,  # 传入编码器实测的向量维度。
+    *,  # 要求存储实例和初始化开关以关键字传入。
+    store: MilvusStore | None = None,  # 允许复用调用方已创建的向量库连接。
+    record_if_missing: bool = False,  # 决定是否给首次使用的空库登记模型信息。
+) -> DependencyReport:  # 以统一的依赖报告返回检查结果。
     """校验已有库，只在确认空库且调用方要求初始化时写入元数据。"""
-    try:
-        from rag_demo.store.milvus_store import InvalidStoreMetadata, MilvusStore
-    except ImportError as exc:
-        return DependencyReport("store_schema", Status.MISCONFIGURED, f"cannot load Milvus client: {exc}")
+    try:  # 单独识别缺少 Milvus 客户端的配置问题。
+        from rag_demo.store.milvus_store import InvalidStoreMetadata, MilvusStore  # 运行检查时才加载客户端与元数据异常类型。
+    except ImportError as exc:  # 捕获客户端或其依赖导入失败的原因。
+        return DependencyReport("store_schema", Status.MISCONFIGURED, f"cannot load Milvus client: {exc}")  # 将缺少客户端归为配置异常。
 
-    if store is None:
-        store = MilvusStore(settings)
-    try:
-        stored = store.read_meta()
-        if not stored:
-            if any(store.collection_stats().values()):
-                raise InvalidStoreMetadata("existing passages have no schema record")
-            if not record_if_missing:
-                return DependencyReport("store_schema", Status.HEALTHY, "empty store ready for initialisation")
-            stored = {"embedding_model": settings.embedding.model, "dimension": dimension}
-            store.write_meta(stored)
-    except InvalidStoreMetadata as exc:
-        return DependencyReport(
-            "store_schema", Status.CONTRACT_MISMATCH,
-            f"{exc}; restore the original metadata or rebuild the knowledge base",
-        )
-    except Exception as exc:
-        return DependencyReport("store_schema", Status.UNREACHABLE, f"cannot access stored metadata: {exc}")
+    if store is None:  # 调用方未提供实例时按当前配置连接。
+        store = MilvusStore(settings)  # 创建访问已有集合的存储对象。
+    try:  # 区分元数据不合约定与读写故障。
+        stored = store.read_meta()  # 读取已有知识库的建库信息。
+        if not stored:  # 处理库中尚未登记模型的情况。
+            if any(store.collection_stats().values()):  # 检查是否已有父块或子块。
+                raise InvalidStoreMetadata("existing passages have no schema record")  # 拒绝为已有内容推定模型和维度。
+            if not record_if_missing:  # 调用方仅要求检查时保留空库状态。
+                return DependencyReport("store_schema", Status.HEALTHY, "empty store ready for initialisation")  # 报告空库可以初始化。
+            stored = {"embedding_model": settings.embedding.model, "dimension": dimension}  # 用当前模型与实测维度构造首条建库记录。
+            store.write_meta(stored)  # 持久化首次建库使用的模型信息。
+    except InvalidStoreMetadata as exc:  # 捕获建库记录损坏或缺失的情况。
+        return DependencyReport(  # 构造存储记录不合约定的报告。
+            "store_schema", Status.CONTRACT_MISMATCH,  # 将存储结构标记为契约不匹配。
+            f"{exc}; restore the original metadata or rebuild the knowledge base",  # 给出恢复原记录或重建知识库的处理方向。
+        )  # 返回含修复提示的检查结果。
+    except Exception as exc:  # 处理其他读取或写入异常。
+        return DependencyReport("store_schema", Status.UNREACHABLE, f"cannot access stored metadata: {exc}")  # 将访问失败归为存储不可用并保留原因。
 
-    stored_model = stored["embedding_model"]
-    stored_dim = stored["dimension"]
+    stored_model = stored["embedding_model"]  # 提取建库时使用的编码模型。
+    stored_dim = stored["dimension"]  # 提取建库时记录的向量维度。
     if stored_model == settings.embedding.model and stored_dim == dimension:  # 当已存储的模型等于模型且已存储的维度等于向量维度时进入此分支。
         return DependencyReport(  # 返回单项依赖报告的结果。
             name="store_schema",  # 传入名称参数。
@@ -255,7 +255,7 @@ def check_stored_dimension(
             "existing storage was built with a different embedding configuration: "  # 提示当前向量配置与已有集合不符。
             f"stored model '{stored_model}' (dim {stored_dim}) but the provider now "  # 列出建库时使用的模型和维度。
             f"reports '{settings.embedding.model}' (dim {dimension}). "  # 列出当前供应商的模型和实测维度。
-            "Restore the original configuration or explicitly rebuild the knowledge base before ingesting."
+            "Restore the original configuration or explicitly rebuild the knowledge base before ingesting."  # 提示入库前恢复原配置或显式重建知识库。
         ),  # 结束当前多行表达式。
         detail={  # 传入详情参数。
             "stored_model": stored_model,  # 填入已存储的模型字段。
@@ -293,22 +293,22 @@ def check_dependencies(settings: Settings, include_llm: bool = True) -> SelfChec
             )  # 结束当前多行表达式。
         )  # 结束当前多行表达式。
 
-    return SelfCheckReport(
+    return SelfCheckReport(  # 汇总各依赖报告与模型探测结果。
         dependencies=dependencies,  # 传入依赖项列表参数。
         embedding_dimension=dimension,  # 传入实测向量维度参数。
         embedding_model=settings.embedding.model,  # 传入向量模型名参数。
     )  # 结束当前多行表达式。
 
 
-def run_selfcheck(
-    settings: Settings, include_llm: bool = True, *, record_if_missing: bool = False,
-) -> SelfCheckReport:
-    report = check_dependencies(settings, include_llm)
-    if report.embedding_dimension is not None:
-        schema = check_stored_dimension(
-            settings, report.embedding_dimension, record_if_missing=record_if_missing,
-        )
-        report.dependencies.append(schema)
+def run_selfcheck(  # 执行依赖探测并补充存储兼容性检查。
+    settings: Settings, include_llm: bool = True, *, record_if_missing: bool = False,  # 配置是否探测生成模型及是否初始化空库记录。
+) -> SelfCheckReport:  # 返回包含单项检查结果的汇总报告。
+    report = check_dependencies(settings, include_llm)  # 先探测外部服务以取得实际向量维度。
+    if report.embedding_dimension is not None:  # 取得向量维度后才进行建库信息核对。
+        schema = check_stored_dimension(  # 获取存储模型与维度的检查结果。
+            settings, report.embedding_dimension, record_if_missing=record_if_missing,  # 沿用实测维度和调用方的初始化开关。
+        )  # 完成存储检查调用。
+        report.dependencies.append(schema)  # 将存储结果并入依赖清单。
     return report  # 返回报告。
 
 

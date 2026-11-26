@@ -202,12 +202,12 @@ function describeDoc(doc) {  // 生成文档状态摘要。
 
 async function loadDocuments() {  // 刷新知识库文档列表。
   try {  // 尝试执行本次操作。
-    const response = await fetch('/api/docs');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const { documents } = await response.json();
-    if (!Array.isArray(documents)) throw new Error('响应缺少文档列表');
-    els.docList.replaceChildren();
-    if (documents.length === 0) {
+    const response = await fetch('/api/docs');  // 向后端请求当前登记的文档。
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);  // 将非成功响应交给列表的错误展示逻辑。
+    const { documents } = await response.json();  // 从响应中取出文档数组。
+    if (!Array.isArray(documents)) throw new Error('响应缺少文档列表');  // 检查文档列表是否符合接口约定。
+    els.docList.replaceChildren();  // 清空上次加载的文档项。
+    if (documents.length === 0) {  // 没有文档时展示空状态提示。
       els.docList.append(el('li', 'doc-sub', '还没有文档'));  // 显示空列表提示。
       return;  // 结束当前处理。
     }  // 结束当前代码块。
@@ -247,53 +247,53 @@ async function removeDocument(doc, button) {  // 向服务端请求删除指定�
 
 els.refreshDocs.addEventListener('click', loadDocuments);  // 点击刷新按钮时重新载入文档。
 
-async function uploadFiles(files) {
-  if (!files?.length) return;
-  const form = new FormData();
-  const pending = [];
-  for (const file of files) {
-    const row = el('li', 'upload-item');
-    const state = el('span', 'upload-state', '正在导入');
-    const detail = el('p', 'upload-detail');
-    const head = el('div', 'upload-item-head');
-    head.append(el('span', 'upload-name', file.name), state);
-    row.append(head, detail);
-    els.uploadList.append(row);
-    if (!/\.(pdf|md|markdown)$/i.test(file.name)) {
-      row.classList.add('failed');
-      state.textContent = '失败';
-      detail.textContent = '不支持此文件类型，请上传 PDF 或 Markdown（.md/.markdown）';
-      continue;
-    }
-    form.append('files', file);
-    pending.push({ row, state, detail });
-  }
-  if (!pending.length) return;
+async function uploadFiles(files) {  // 批量上传文件并在每一行展示对应结果。
+  if (!files?.length) return;  // 没有选择文件时直接结束。
+  const form = new FormData();  // 构造后端接收的多文件表单。
+  const pending = [];  // 保存实际提交文件的界面节点以便匹配响应。
+  for (const file of files) {  // 按选择顺序创建各文件的上传行。
+    const row = el('li', 'upload-item');  // 创建单份文件的结果列表项。
+    const state = el('span', 'upload-state', '正在导入');  // 先将状态文字设为正在导入。
+    const detail = el('p', 'upload-detail');  // 预留导入统计或错误原因的显示位置。
+    const head = el('div', 'upload-item-head');  // 创建容纳文件名和状态的标题行。
+    head.append(el('span', 'upload-name', file.name), state);  // 将文件名与状态并排放入标题行。
+    row.append(head, detail);  // 把标题和详情组合成完整文件项。
+    els.uploadList.append(row);  // 立即显示该文件的处理状态。
+    if (!/\.(pdf|md|markdown)$/i.test(file.name)) {  // 按扩展名识别前端支持的文件，忽略大小写。
+      row.classList.add('failed');  // 为不支持的文件应用失败样式。
+      state.textContent = '失败';  // 将该文件的可见状态更新为失败。
+      detail.textContent = '不支持此文件类型，请上传 PDF 或 Markdown（.md/.markdown）';  // 说明可接受的文件类型及扩展名。
+      continue;  // 跳过该文件并继续检查其余文件。
+    }  // 结束文件类型筛选。
+    form.append('files', file);  // 将受支持的文件追加到同名表单字段。
+    pending.push({ row, state, detail });  // 按提交顺序保留该文件的显示节点。
+  }  // 完成本批文件筛选。
+  if (!pending.length) return;  // 全部文件都被筛除时跳过上传请求。
 
-  try {
-    const response = await fetch('/api/docs', { method: 'POST', body: form });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const { results } = await response.json();
-    for (const [index, { row, state, detail }] of pending.entries()) {
-      const result = results[index];
-      const ok = result.status === 'ok';
-      row.classList.add(ok ? 'done' : 'failed');
-      state.textContent = ok ? '可提问' : '失败';
-      detail.textContent = ok
-        ? `${result.parents} 段 / ${result.children} 块，用时 ${result.duration}s`
-        : result.error;
-    }
-  } catch (error) {
-    for (const { row, state, detail } of pending) {
-      row.classList.add('failed');
-      state.textContent = '失败';
-      detail.textContent = `请求失败：${error.message}`;
-    }
-  } finally {
-    await loadDocuments();
-    await loadHealth();
-  }
-}
+  try {  // 统一处理批量请求与响应读取中的异常。
+    const response = await fetch('/api/docs', { method: 'POST', body: form });  // 将文件表单提交给文档导入接口。
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);  // 非成功响应触发本批次的请求失败处理。
+    const { results } = await response.json();  // 读取后端按提交顺序返回的逐文件结果。
+    for (const [index, { row, state, detail }] of pending.entries()) {  // 同时取得提交序号和该文件的显示节点。
+      const result = results[index];  // 用序号匹配结果，同名文件也能分别显示。
+      const ok = result.status === 'ok';  // 根据后端状态判断该文件是否导入成功。
+      row.classList.add(ok ? 'done' : 'failed');  // 用不同样式区分成功和失败。
+      state.textContent = ok ? '可提问' : '失败';  // 告诉用户文件已可提问或导入失败。
+      detail.textContent = ok  // 根据该文件的状态选择详情文字。
+        ? `${result.parents} 段 / ${result.children} 块，用时 ${result.duration}s`  // 成功时显示父块数、子块数及处理时间。
+        : result.error;  // 失败时显示后端给出的具体原因。
+    }  // 完成逐文件结果展示。
+  } catch (error) {  // 捕获请求失败或读取结果时产生的异常。
+    for (const { row, state, detail } of pending) {  // 依次更新本次请求涉及的文件行。
+      row.classList.add('failed');  // 给当前文件项应用失败样式。
+      state.textContent = '失败';  // 将该项状态文字改为失败。
+      detail.textContent = `请求失败：${error.message}`;  // 展示本次请求的异常信息。
+    }  // 完成所有待处理行的错误展示。
+  } finally {  // 无论请求成功或失败都刷新页面数据。
+    await loadDocuments();  // 重新读取登记表以显示文档的最新状态。
+    await loadHealth();  // 更新依赖状态面板。
+  }  // 完成上传后的状态刷新。
+}  // 结束本批次文件上传。
 
 function parseFrame(frame) {  // 拆解服务端推送的单个事件。
   let event = 'message';  // 未声明事件名时使用默认名称。

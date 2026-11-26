@@ -81,10 +81,10 @@ class FakePipeline:  # 定义 FakePipeline 类型。
         self.error = error  # 保存传入的错误。
         self.ingested: list[tuple[str, bytes]] = []  # 初始化ingested为空列表。
 
-    def ingest(self, name, content):
-        from rag_demo.ingestion import IngestResult
+    def ingest(self, name, content):  # 模拟单文件入库接口。
+        from rag_demo.ingestion import IngestResult  # 复用真实结果类型以符合上传接口约定。
 
-        self.ingested.append((name, content))
+        self.ingested.append((name, content))  # 记录文件名和字节内容供测试核对顺序。
         if self.error:  # 当错误有效时进入此分支。
             raise self.error  # 向上抛出当前异常。
         return IngestResult(  # 返回入库结果的结果。
@@ -96,11 +96,11 @@ class FakeStore:  # 定义 FakeStore 类型。
     def __init__(self) -> None:  # 保存实例所需的配置和依赖。
         self.deleted: list[str] = []  # 初始化deleted为空列表。
 
-    def read_meta(self):
-        return {"embedding_model": Settings().embedding.model, "dimension": 1024}
+    def read_meta(self):  # 模拟存储中的建库元数据。
+        return {"embedding_model": Settings().embedding.model, "dimension": 1024}  # 使用默认模型名和固定维度构造兼容记录。
 
-    def ensure_collections(self, dimension):
-        pass
+    def ensure_collections(self, dimension):  # 模拟按实测维度准备集合的入口。
+        pass  # 测试替身无需实际创建 Milvus 集合。
 
     def delete_document(self, doc_id):  # 定义删除文档的处理逻辑。
         self.deleted.append(doc_id)  # 将文档标识加入deleted。
@@ -350,38 +350,38 @@ class TestChatStream:  # 定义 TestChatStream 类型。
         assert set(debug) >= {"query", "dense", "sparse", "fused", "reranked"}  # 确认去重集合至少为集合。
 
 
-class TestUploadResults:
-    def test_duplicate_names_have_ordered_results(self):
-        fakes = Fakes()
-        response = _client(fakes).post("/api/docs", files=[
-            ("files", ("same.md", b"first")), ("files", ("same.md", b"second"))
-        ])
-        assert response.status_code == 200
-        assert response.headers["content-type"] == "application/json"
-        assert fakes.pipeline.ingested == [("same.md", b"first"), ("same.md", b"second")]
-        assert response.json()["results"] == [
-            {"name": "same.md", "status": "ok", "doc_id": "d1", "parents": 2,
-             "children": 4, "duration": 0.4}
-        ] * 2
+class TestUploadResults:  # 验证批量上传接口的逐文件结果。
+    def test_duplicate_names_have_ordered_results(self):  # 验证上传两个同名文件仍分别处理并依次返回。
+        fakes = Fakes()  # 创建隔离的服务替身。
+        response = _client(fakes).post("/api/docs", files=[  # 向上传接口提交重复的文件名。
+            ("files", ("same.md", b"first")), ("files", ("same.md", b"second"))  # 用不同内容区分同名的两次上传。
+        ])  # 完成批量请求并取得响应。
+        assert response.status_code == 200  # 确认批次正常返回。
+        assert response.headers["content-type"] == "application/json"  # 确认接口返回 JSON 格式。
+        assert fakes.pipeline.ingested == [("same.md", b"first"), ("same.md", b"second")]  # 核对入库流程接收的字节和先后次序。
+        assert response.json()["results"] == [  # 逐字段检查每个文件的结果。
+            {"name": "same.md", "status": "ok", "doc_id": "d1", "parents": 2,  # 期望结果包含原名、成功状态、标识和父块数。
+             "children": 4, "duration": 0.4}  # 同时校验子块数和耗时。
+        ] * 2  # 两次上传都应产生一项完整结果。
 
-    def test_mixed_batch_continues_after_failure_or_size_rejection(self):
-        from unittest.mock import Mock
-        from rag_demo.ingestion import IngestionError
+    def test_mixed_batch_continues_after_failure_or_size_rejection(self):  # 验证解析失败和超限不会中断后续文件。
+        from unittest.mock import Mock  # 引入可按次序模拟返回值与异常的替身。
+        from rag_demo.ingestion import IngestionError  # 引入带阶段信息的导入异常。
 
-        fakes = Fakes()
-        success = fakes.pipeline.ingest("notes.md", b"ok")
-        fakes.pipeline.ingest = Mock(side_effect=[IngestionError("parsing: needs OCR"), success])
-        client = _client(fakes)
-        client.app.state.settings.storage.max_upload_mb = 1
-        response = client.post("/api/docs", files=[
-            ("files", ("scan.pdf", b"scan")), ("files", ("big.md", b"x" * (1024**2 + 1))),
-            ("files", ("notes.md", b"ok"))
-        ])
-        scan, big, notes = response.json()["results"]
-        assert scan == {"name": "scan.pdf", "status": "failed", "error": "parsing: needs OCR"}
-        assert big["status"] == "failed" and "1 MB" in big["error"]
-        assert notes["name"] == "notes.md" and notes["status"] == "ok"
-        assert fakes.pipeline.ingest.call_count == 2
+        fakes = Fakes()  # 为混合批次创建独立服务替身。
+        success = fakes.pipeline.ingest("notes.md", b"ok")  # 准备最后一个文件的成功返回值。
+        fakes.pipeline.ingest = Mock(side_effect=[IngestionError("parsing: needs OCR"), success])  # 让入库调用先抛解析异常再返回成功。
+        client = _client(fakes)  # 用测试客户端访问替身服务。
+        client.app.state.settings.storage.max_upload_mb = 1  # 把单个上传文件的上限设为一兆字节。
+        response = client.post("/api/docs", files=[  # 在同一请求中提交三种结果的文件。
+            ("files", ("scan.pdf", b"scan")), ("files", ("big.md", b"x" * (1024**2 + 1))),  # 依次放入触发解析错误和刚好超限的文件。
+            ("files", ("notes.md", b"ok"))  # 最后放入应成功导入的小文件。
+        ])  # 提交批量上传请求。
+        scan, big, notes = response.json()["results"]  # 按提交顺序拆出三份处理结果。
+        assert scan == {"name": "scan.pdf", "status": "failed", "error": "parsing: needs OCR"}  # 检查扫描件失败原因被原样带回。
+        assert big["status"] == "failed" and "1 MB" in big["error"]  # 检查超限结果明确给出大小限制。
+        assert notes["name"] == "notes.md" and notes["status"] == "ok"  # 检查最后的文件仍被成功处理。
+        assert fakes.pipeline.ingest.call_count == 2  # 确认超限文件在调用入库流程前被拦截。
 
 
 class TestDocumentManagement:  # 定义 TestDocumentManagement 类型。

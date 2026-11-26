@@ -9,7 +9,7 @@ from collections.abc import Iterable, Sequence  # 从 collections.abc 引入本�
 
 from pymilvus import DataType, MilvusClient  # 从 pymilvus 引入本模块使用的类型和工具。
 
-from rag_demo.chunking.chunker import Child, Parent
+from rag_demo.chunking.chunker import Child, Parent  # 引入分别对应检索单元和上下文段落的类型。
 from rag_demo.config import Settings  # 从 rag_demo.config 导入项目配置。
 
 # 限制字段长度，使超长内容在写入时暴露问题。
@@ -23,7 +23,7 @@ PLACEHOLDER_DIM = 2  # 将PLACEHOLDER_DIM设为2。
 PLACEHOLDER_VECTOR = [0.0, 0.0]  # 将PLACEHOLDER_VECTOR设为列表。
 
 
-class InvalidStoreMetadata(ValueError):
+class InvalidStoreMetadata(ValueError):  # 标识存储中的模型记录不符合预期格式。
     """已有建库记录无法描述向量模型和维度。"""
 
 
@@ -145,24 +145,24 @@ class MilvusStore:  # 管理三个集合的结构和底层读写。
         """返回已保存的建库元数据；无记录时返回空字典。"""
         if not self.client.has_collection(self.meta_name):  # 集合尚未创建时没有可读取的建库元数据。
             return {}  # 返回空字典。
-        rows = self.client.query(
-            self.meta_name, filter='key == "schema"', output_fields=["value"], limit=1
-        )
-        if not rows:
-            return {}
-        try:
-            schema = json.loads(rows[0]["value"])
-        except json.JSONDecodeError as exc:
-            raise InvalidStoreMetadata("stored schema contains invalid JSON") from exc
-        if not (
-            isinstance(schema, dict)
-            and isinstance(schema.get("embedding_model"), str)
-            and schema["embedding_model"]
-            and type(schema.get("dimension")) is int
-            and schema["dimension"] > 0
-        ):
-            raise InvalidStoreMetadata("stored schema requires an embedding model and a positive dimension")
-        return schema
+        rows = self.client.query(  # 读取记录知识库模型信息的条目。
+            self.meta_name, filter='key == "schema"', output_fields=["value"], limit=1  # 按 schema 键只查询一条记录的 value 字段。
+        )  # 完成元数据查询。
+        if not rows:  # 检查该键是否尚无记录。
+            return {}  # 用空映射表示未登记模型信息。
+        try:  # 尝试解码元数据的 JSON 文本。
+            schema = json.loads(rows[0]["value"])  # 读取首条记录并还原模型配置。
+        except json.JSONDecodeError as exc:  # 捕获存储内容无法解码的错误。
+            raise InvalidStoreMetadata("stored schema contains invalid JSON") from exc  # 将损坏的 JSON 报告为元数据不合法。
+        if not (  # 逐项验证模型记录的结构和字段。
+            isinstance(schema, dict)  # 要求最外层是键值映射。
+            and isinstance(schema.get("embedding_model"), str)  # 要求模型名是字符串。
+            and schema["embedding_model"]  # 要求模型名含有内容。
+            and type(schema.get("dimension")) is int  # 要求维度为整数并排除布尔值。
+            and schema["dimension"] > 0  # 要求维度大于零。
+        ):  # 任一约束未满足即进入异常分支。
+            raise InvalidStoreMetadata("stored schema requires an embedding model and a positive dimension")  # 告知调用方有效建库记录需要的字段。
+        return schema  # 交付已验证的模型信息。
 
     def write_meta(self, payload: dict) -> None:  # 写入建库元数据，覆盖旧值。
         """写入建库元数据，覆盖旧值。"""
@@ -177,42 +177,42 @@ class MilvusStore:  # 管理三个集合的结构和底层读写。
 
     # 写入与激活文档。
 
-    def insert_units(
-        self, children: Sequence[Child], parents: Sequence[Parent], vectors: Sequence[list[float]]
-    ) -> None:
+    def insert_units(  # 将检索子块和上下文父块分别写入对应集合。
+        self, children: Sequence[Child], parents: Sequence[Parent], vectors: Sequence[list[float]]  # 接收两个层级的块以及按子块顺序排列的向量。
+    ) -> None:  # 将写入结果通过存储操作体现。
         """按现有集合字段写入片段，全部写完后由调用方激活。"""
-        child_rows = [
-            {
-                "id": child.id,
-                "doc_id": child.doc_id,
-                "parent_id": child.parent_id,
-                "child_idx": child.child_idx,
-                "text": child.text[:MAX_TEXT_LEN],
-                "breadcrumb": child.breadcrumb[:MAX_BREADCRUMB_LEN],
-                "page": child.page,
-                "source_name": child.source_name[:MAX_NAME_LEN],
-                "active": False,
-                "embedding": normalise(vector),
-            }
-            for child, vector in zip(children, vectors, strict=True)
-        ]
-        parent_rows = [
-            {
-                "parent_id": parent.parent_id,
-                "doc_id": parent.doc_id,
-                "text": parent.text[:MAX_TEXT_LEN],
-                "breadcrumb": parent.breadcrumb[:MAX_BREADCRUMB_LEN],
-                "page_start": parent.page_start,
-                "source_name": parent.source_name[:MAX_NAME_LEN],
-                "active": False,
-                "placeholder": PLACEHOLDER_VECTOR,
-            }
-            for parent in parents
-        ]
-        if child_rows:
-            self.client.insert(self.child_name, child_rows)
-        if parent_rows:
-            self.client.insert(self.parent_name, parent_rows)
+        child_rows = [  # 为每个子块生成待写入的实体。
+            {  # 组装子块标识、内容及向量字段。
+                "id": child.id,  # 用子块标识作为行主键。
+                "doc_id": child.doc_id,  # 关联所属文档以支持按文档过滤。
+                "parent_id": child.parent_id,  # 关联父块以便召回后扩展上下文。
+                "child_idx": child.child_idx,  # 保留子块在当前父块内从零开始的序号。
+                "text": child.text[:MAX_TEXT_LEN],  # 按文本字段上限截取子块正文。
+                "breadcrumb": child.breadcrumb[:MAX_BREADCRUMB_LEN],  # 按字段上限截取标题路径。
+                "page": child.page,  # 保存可用于引用的来源页码。
+                "source_name": child.source_name[:MAX_NAME_LEN],  # 按名称字段上限截取文件名。
+                "active": False,  # 暂存阶段不让检索命中新子块。
+                "embedding": normalise(vector),  # 将归一化向量写入检索字段。
+            }  # 完成当前子块行组装。
+            for child, vector in zip(children, vectors, strict=True)  # 严格逐一配对子块和向量以检测数量差异。
+        ]  # 完成子块写入批次。
+        parent_rows = [  # 为每个父块生成上下文存储实体。
+            {  # 组装父块的标识、正文与来源字段。
+                "parent_id": parent.parent_id,  # 用父块标识作为行主键。
+                "doc_id": parent.doc_id,  # 将上下文关联到所属文档。
+                "text": parent.text[:MAX_TEXT_LEN],  # 按字段上限截取父块正文。
+                "breadcrumb": parent.breadcrumb[:MAX_BREADCRUMB_LEN],  # 保存长度受限的标题路径。
+                "page_start": parent.page_start,  # 记录父块正文的起始页。
+                "source_name": parent.source_name[:MAX_NAME_LEN],  # 保存长度受限的来源文件名。
+                "active": False,  # 与子块一样先写入未激活状态。
+                "placeholder": PLACEHOLDER_VECTOR,  # 填入父集合所需的占位向量。
+            }  # 完成当前父块行组装。
+            for parent in parents  # 依次处理所有父块。
+        ]  # 完成父块写入批次。
+        if child_rows:  # 有子块才向子集合提交。
+            self.client.insert(self.child_name, child_rows)  # 批量插入子块及其归一化向量。
+        if parent_rows:  # 有父块才向父集合提交。
+            self.client.insert(self.parent_name, parent_rows)  # 批量插入可扩展的上下文段落。
 
     def activate_document(self, doc_id: str) -> None:  # 使文档的所有片段可以被检索。
         """使文档的所有片段可以被检索。"""
@@ -311,8 +311,8 @@ class MilvusStore:  # 管理三个集合的结构和底层读写。
             if not self.client.has_collection(name):  # 检查名称是否尚未创建。
                 stats[name] = 0  # 将统计信息中对应的项设为0。
                 continue  # 跳过本项，继续处理下一项。
-            rows = self.client.query(name, filter="", output_fields=["count(*)"])
-            stats[name] = int(rows[0]["count(*)"])
+            rows = self.client.query(name, filter="", output_fields=["count(*)"])  # 向当前集合查询实体总数。
+            stats[name] = int(rows[0]["count(*)"])  # 将聚合结果转换为整数并按集合名保存。
         return stats  # 返回统计信息。
 
     def drop_all(self) -> None:  # 删除本项目的集合，供测试清理或重建使用。

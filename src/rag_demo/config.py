@@ -88,12 +88,12 @@ class ParsingSettings(BaseModel):  # 集中管理解析配置参数。
     min_chars_per_page: int = 40  # 设置最低平均字符数字段的默认值。
 
 
-class MySQLSettings(BaseModel):
-    host: str = "127.0.0.1"
-    port: int = 3306
-    database: str = "rag_demo"
-    user: str = "rag_demo"
-    password: str = Field(default="", repr=False)
+class MySQLSettings(BaseModel):  # 定义文档登记表使用的 MySQL 连接参数。
+    host: str = "127.0.0.1"  # 默认连接本机回环地址。
+    port: int = 3306  # 默认使用 MySQL 的标准端口。
+    database: str = "rag_demo"  # 指定存放登记表的数据库名。
+    user: str = "rag_demo"  # 指定连接数据库使用的账号。
+    password: str = Field(default="", repr=False)  # 密码默认留空并从模型的文本表示中隐藏。
 
 
 class StorageSettings(BaseModel):  # 集中管理存储参数。
@@ -110,7 +110,7 @@ class Settings(BaseModel):  # 集中管理参数。
     llm: LLMSettings = Field(default_factory=LLMSettings)  # 设置生成模型字段的默认值。
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)  # 设置向量字段的默认值。
     rerank: RerankSettings = Field(default_factory=RerankSettings)  # 设置重排字段的默认值。
-    mysql: MySQLSettings = Field(default_factory=MySQLSettings)
+    mysql: MySQLSettings = Field(default_factory=MySQLSettings)  # 为每份项目配置创建独立的 MySQL 设置。
     milvus: MilvusSettings = Field(default_factory=MilvusSettings)  # 设置向量库字段的默认值。
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)  # 设置切块字段的默认值。
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)  # 设置检索配置字段的默认值。

@@ -214,7 +214,7 @@ class HybridRetriever:  # 执行双路召回、排名融合、重排与父块扩
 
         result: list[Candidate] = []  # 初始化结果为空列表。
         for rank, (identifier, score) in enumerate(fused):  # 按融合后的顺序取出子块标识及得分。
-            candidate = by_id[identifier]
+            candidate = by_id[identifier]  # 按融合后的标识取回对应候选，以便填入融合结果。
             candidate.fused_score = score  # 在候选上记下两路合计分数。
             candidate.fused_rank = rank  # 保存该候选在融合列表中的位置。
             result.append(candidate)  # 将候选项加入结果。

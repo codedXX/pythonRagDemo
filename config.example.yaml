@@ -58,10 +58,10 @@ parsing:  # 文档解析设置。
   min_chars_per_page: 40  # 低于该平均字符密度的文档按扫描件处理。
 
 mysql:  # 应用所在机器上原生安装的 MySQL 登记库。
-  host: "127.0.0.1"
-  port: 3306
-  database: "rag_demo"
-  user: "rag_demo"
+  host: "127.0.0.1"  # 连接本机用于登记文档的 MySQL 实例。
+  port: 3306  # 指定 MySQL 的监听端口。
+  database: "rag_demo"  # 指定存放 documents 登记表的数据库。
+  user: "rag_demo"  # 指定应用读写登记表使用的账号。
   password: ""  # 可通过 RAG__MYSQL__PASSWORD 设置。
 
 storage:  # 本地持久化设置。
