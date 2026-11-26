@@ -127,3 +127,37 @@ def test_parse_handles_bytes_and_reports_metadata():  # 验证字节输入可解
 
 def test_empty_document_is_reported_empty():  # 验证空文档被识别为空。
     assert parse_markdown("empty.md", b"").is_empty()  # 确认为空的结果。
+
+def test_setext_heading_and_sibling_paths():
+    segments = _parse("安装指南\n===\n\n## 环境要求\n正文甲\n\n## 配置\n正文乙")
+    assert [(s.kind, s.text, s.depth, s.heading_path) for s in segments] == [
+        (SegmentKind.HEADING, "安装指南\n===", 1, ("安装指南",)),
+        (SegmentKind.HEADING, "## 环境要求", 2, ("安装指南", "环境要求")),
+        (SegmentKind.PARAGRAPH, "正文甲", 0, ("安装指南", "环境要求")),
+        (SegmentKind.HEADING, "## 配置", 2, ("安装指南", "配置")),
+        (SegmentKind.PARAGRAPH, "正文乙", 0, ("安装指南", "配置")),
+    ]
+
+
+def test_short_inner_fence_keeps_example_in_its_section():
+    code = "````md\n```\n# 假标题\n\n````"
+    heading, example, after = _parse(f"# 示例\n\n{code}\n\n继续")
+    assert (example.kind, example.text) == (SegmentKind.CODE, code)
+    assert (after.kind, after.text) == (SegmentKind.PARAGRAPH, "继续")
+    assert heading.heading_path == example.heading_path == after.heading_path == ("示例",)
+
+
+def test_nested_quote_has_one_copy_of_its_source():
+    quote = "> # 引用内标题\n>\n> - 父项\n>   - 子项"
+    source = f"# 操作说明\n\n{quote}\n\n- 独立列表"
+    heading, quoted, listed = _parse(source)
+    assert (quoted.kind, quoted.text) == (SegmentKind.QUOTE, quote)
+    assert (listed.kind, listed.text) == (SegmentKind.LIST, "- 独立列表")
+    assert heading.heading_path == quoted.heading_path == listed.heading_path == ("操作说明",)
+
+
+def test_table_without_outer_pipes_and_standalone_pipe_text():
+    table = "名称 | 数量\n--- | ---\n苹果 | 2"
+    parsed_table, paragraph = _parse(f"{table}\n\n| 普通文字 |")
+    assert (parsed_table.kind, parsed_table.text) == (SegmentKind.TABLE, table)
+    assert (paragraph.kind, paragraph.text) == (SegmentKind.PARAGRAPH, "| 普通文字 |")

@@ -115,7 +115,8 @@ uv run python scripts/serve.py
     ▼
 FastAPI
     │
-    ├── 解析      PyMuPDF / Markdown AST，扫描件拒收
+    ├── 解析      PDF 用 PyMuPDF 提取带页码的正文，扫描件拒收
+    │             Markdown 用 markdown-it-py 识别 CommonMark 块和管道表格，保留章节路径
     ├── 分块      结构优先 + 语义兜底 → 父块 ⊃ 子块
     ├── 向量化    百炼 OpenAI 兼容端点，批处理 + 退避重试 + 内容哈希缓存
     ├── 存储      Milvus 双 collection（Strong 一致性）+ 本机 MySQL 文档登记表
