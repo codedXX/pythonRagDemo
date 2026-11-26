@@ -6,8 +6,8 @@ from rag_demo.parsers.base import SegmentKind  # 从 rag_demo.parsers.base 导�
 from rag_demo.parsers.markdown import parse_markdown  # 从 rag_demo.parsers.markdown 导入标记文本解析器。
 
 
-def _parse(text: str):  # 定义解析响应的处理逻辑。
-    return parse_markdown("test.md", text.encode()).segments  # 返回parse_text的结果。
+def _parse(text: str):  # 让测试可以直接用 Markdown 文本构造解析样本。
+    return parse_markdown("test.md", text.encode()).segments  # 模拟上传的文件名和字节内容，取出待断言的结构片段。
 
 
 def test_heading_path_is_tracked_through_nesting():  # 验证嵌套标题能正确扩展路径。
@@ -128,36 +128,36 @@ def test_parse_handles_bytes_and_reports_metadata():  # 验证字节输入可解
 def test_empty_document_is_reported_empty():  # 验证空文档被识别为空。
     assert parse_markdown("empty.md", b"").is_empty()  # 确认为空的结果。
 
-def test_setext_heading_and_sibling_paths():
-    segments = _parse("安装指南\n===\n\n## 环境要求\n正文甲\n\n## 配置\n正文乙")
-    assert [(s.kind, s.text, s.depth, s.heading_path) for s in segments] == [
-        (SegmentKind.HEADING, "安装指南\n===", 1, ("安装指南",)),
-        (SegmentKind.HEADING, "## 环境要求", 2, ("安装指南", "环境要求")),
-        (SegmentKind.PARAGRAPH, "正文甲", 0, ("安装指南", "环境要求")),
-        (SegmentKind.HEADING, "## 配置", 2, ("安装指南", "配置")),
-        (SegmentKind.PARAGRAPH, "正文乙", 0, ("安装指南", "配置")),
-    ]
+def test_setext_heading_and_sibling_paths():  # 验证下划线式一级标题和同级二级标题生成正确的章节路径。
+    segments = _parse("安装指南\n===\n\n## 环境要求\n正文甲\n\n## 配置\n正文乙")  # 构造含一个一级标题、两个二级标题和各节独立正文的样本。
+    assert [(s.kind, s.text, s.depth, s.heading_path) for s in segments] == [  # 按原文顺序逐段核对类别、文本、标题级别和完整路径。
+        (SegmentKind.HEADING, "安装指南\n===", 1, ("安装指南",)),  # 一级标题原文保留等号下划线，路径只采用标题名称。
+        (SegmentKind.HEADING, "## 环境要求", 2, ("安装指南", "环境要求")),  # 首个二级标题应接在安装指南之下。
+        (SegmentKind.PARAGRAPH, "正文甲", 0, ("安装指南", "环境要求")),  # 第一段正文应继承环境要求的路径，自身标题深度为零。
+        (SegmentKind.HEADING, "## 配置", 2, ("安装指南", "配置")),  # 第二个二级标题应在同一父级下替换环境要求。
+        (SegmentKind.PARAGRAPH, "正文乙", 0, ("安装指南", "配置")),  # 第二段正文应归入配置章节。
+    ]  # 上述五项也是期望的完整片段序列。
 
 
-def test_short_inner_fence_keeps_example_in_its_section():
-    code = "````md\n```\n# 假标题\n\n````"
-    heading, example, after = _parse(f"# 示例\n\n{code}\n\n继续")
-    assert (example.kind, example.text) == (SegmentKind.CODE, code)
-    assert (after.kind, after.text) == (SegmentKind.PARAGRAPH, "继续")
-    assert heading.heading_path == example.heading_path == after.heading_path == ("示例",)
+def test_short_inner_fence_keeps_example_in_its_section():  # 验证代码块内较短的围栏不会提前结束代码或改变所属章节。
+    code = "````md\n```\n# 假标题\n\n````"  # 用四个反引号包住三个反引号和一行形似标题的示例代码。
+    heading, example, after = _parse(f"# 示例\n\n{code}\n\n继续")  # 解析后应恰有标题、代码示例及后续正文三个片段。
+    assert (example.kind, example.text) == (SegmentKind.CODE, code)  # 核对代码片段原样保留围栏、空行和内部井号。
+    assert (after.kind, after.text) == (SegmentKind.PARAGRAPH, "继续")  # 核对外层围栏结束后的文字单独成为普通段落。
+    assert heading.heading_path == example.heading_path == after.heading_path == ("示例",)  # 核对三个片段都属于示例章节，代码里的井号不会创建新路径。
 
 
-def test_nested_quote_has_one_copy_of_its_source():
-    quote = "> # 引用内标题\n>\n> - 父项\n>   - 子项"
-    source = f"# 操作说明\n\n{quote}\n\n- 独立列表"
-    heading, quoted, listed = _parse(source)
-    assert (quoted.kind, quoted.text) == (SegmentKind.QUOTE, quote)
-    assert (listed.kind, listed.text) == (SegmentKind.LIST, "- 独立列表")
-    assert heading.heading_path == quoted.heading_path == listed.heading_path == ("操作说明",)
+def test_nested_quote_has_one_copy_of_its_source():  # 验证嵌套引用的原文只生成一份顶层片段。
+    quote = "> # 引用内标题\n>\n> - 父项\n>   - 子项"  # 在引用内放置标题和嵌套列表以检验块边界。
+    source = f"# 操作说明\n\n{quote}\n\n- 独立列表"  # 在引用外添加真实章节标题和独立列表。
+    heading, quoted, listed = _parse(source)  # 按预期的三个顶层块解包，多生成嵌套片段也会使测试失败。
+    assert (quoted.kind, quoted.text) == (SegmentKind.QUOTE, quote)  # 核对完整引文与所有嵌套标记保存在同一个引用片段中。
+    assert (listed.kind, listed.text) == (SegmentKind.LIST, "- 独立列表")  # 核对引用结束后的列表独立成块。
+    assert heading.heading_path == quoted.heading_path == listed.heading_path == ("操作说明",)  # 核对引用内的标题未改变引用本身及后续列表的章节路径。
 
 
-def test_table_without_outer_pipes_and_standalone_pipe_text():
-    table = "名称 | 数量\n--- | ---\n苹果 | 2"
-    parsed_table, paragraph = _parse(f"{table}\n\n| 普通文字 |")
-    assert (parsed_table.kind, parsed_table.text) == (SegmentKind.TABLE, table)
-    assert (paragraph.kind, paragraph.text) == (SegmentKind.PARAGRAPH, "| 普通文字 |")
+def test_table_without_outer_pipes_and_standalone_pipe_text():  # 验证无外侧竖线的表格和仅有竖线的普通段落能被区分。
+    table = "名称 | 数量\n--- | ---\n苹果 | 2"  # 构造仅以内部竖线分列、含表头分隔行的有效表格。
+    parsed_table, paragraph = _parse(f"{table}\n\n| 普通文字 |")  # 在表格后另起一段加入带外侧竖线的文字。
+    assert (parsed_table.kind, parsed_table.text) == (SegmentKind.TABLE, table)  # 核对有效表格整体被识别并保留原文。
+    assert (paragraph.kind, paragraph.text) == (SegmentKind.PARAGRAPH, "| 普通文字 |")  # 核对缺少表头分隔行的文字保留为普通段落。
